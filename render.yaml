@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: tokenmaxxx
+    runtime: docker
+    repo: https://github.com/shashwotghimire/tokenmaxxx
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    autoDeploy: false
+    disk:
+      name: tokenmaxxx-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 3000
