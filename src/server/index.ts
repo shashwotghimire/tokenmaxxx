@@ -2,6 +2,7 @@ import { serve } from "bun";
 import type { ServerWebSocket } from "bun";
 import index from "../client/index.html";
 import landing from "../client/landing.html";
+import path from "node:path";
 import { createClaudeCodeSource } from "./sources/claudeCode";
 import { createOpencodeSource } from "./sources/opencode";
 import { createCodexSource } from "./sources/codex";
@@ -71,6 +72,13 @@ const server = serve({
     "/": landing,
 
     "/dashboard": index,
+
+    "/assets/sql-wasm.wasm": () => {
+      const wasm = path.join(import.meta.dir, "..", "client", "assets", "sql-wasm.wasm");
+      return new Response(Bun.file(wasm), {
+        headers: { "content-type": "application/wasm", "cache-control": "public, max-age=31536000, immutable" },
+      });
+    },
 
     "/api/summary": {
       GET: api((opts) => getSummary(opts)),

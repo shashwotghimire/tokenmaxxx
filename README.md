@@ -33,6 +33,15 @@ Mount your agent logs read-only at their container paths (`/root/.claude`,
 at them with `TOKENMAXXX_CLAUDE_PATH`, `TOKENMAXXX_OPENCODE_DB`,
 `TOKENMAXXX_CODEX_DB`. The SQLite database persists in `/data`.
 
+## Browser mode (no server data)
+
+When the site has no server-side data (e.g. a hosted deployment), visitors can
+click **Connect logs** on the dashboard and select their own agent logs:
+Claude Code's `~/.claude/projects` folder, `opencode.db`, or `state_*.sqlite`.
+Everything is parsed **in the browser** with `sql.js` — nothing is uploaded.
+Note this only works in browsers with the File System Access API or file
+picker support, and the one-click permission is per session.
+
 ## What it shows
 
 - **Live ticker** — session token + cost totals, updated within ~1–2s of a

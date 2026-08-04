@@ -53,6 +53,62 @@ body {
   text-decoration: none;
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.browser-banner {
+  margin-bottom: 16px;
+  font-size: 12.5px;
+}
+
+.browser-banner strong {
+  color: var(--text);
+}
+
+/* Connect panel */
+.connect-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.connect-head h2 {
+  margin-bottom: 4px;
+}
+
+.connect-head p {
+  margin: 0;
+  max-width: 560px;
+  font-size: 13px;
+}
+
+.connect-live {
+  border-color: rgba(63, 185, 80, 0.45);
+}
+
+.connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.connect-sources {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.connect-status {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
 .conn {
   display: inline-flex;
   align-items: center;

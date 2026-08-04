@@ -1,3 +1,5 @@
+import { maybeBrowserApi } from "./browser/store";
+
 export function formatTokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
@@ -10,6 +12,8 @@ export function formatCost(n: number): string {
 }
 
 export async function fetchJSON<T>(url: string): Promise<T> {
+  const local = maybeBrowserApi(url);
+  if (local !== null) return local as T;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
   return (await res.json()) as T;
