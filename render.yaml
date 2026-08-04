@@ -14,3 +14,5 @@ services:
     envVars:
       - key: PORT
         value: 3000
+      - key: ENABLE_DASHBOARD
+        value: false

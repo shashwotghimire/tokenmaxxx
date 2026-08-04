@@ -63,28 +63,30 @@ export function Landing() {
           <a href="#features">Features</a>
           <a href="#how">How it works</a>
           <a href="#agents">Agents</a>
+          <a href="#install">Install</a>
         </div>
-        <a className="l-btn l-btn-primary" href="/dashboard">
-          Open dashboard →
+        <a className="l-btn l-btn-primary" href="#install">
+          Self-host →
         </a>
       </nav>
 
       <header className="l-hero">
         <div className="l-hero-bg" aria-hidden="true" />
         <div className="l-wrap l-hero-inner">
-          <span className="l-pill">real-time telemetry for AI coding agents</span>
+          <span className="l-pill">self-hosted telemetry for AI coding agents</span>
           <h1>
             Know every token
             <br />
             you <span className="l-accent">spend</span>.
           </h1>
           <p className="l-sub">
-            A self-hosted, live dashboard that watches Claude Code, OpenCode, and Codex CLI — tokens,
-            cost, and trends streaming in as you work.
+            A dashboard that runs on <em>your</em> machine and watches Claude Code, OpenCode, and
+            Codex CLI — tokens, cost, and trends streaming in as you work. Nothing is uploaded,
+            ever.
           </p>
           <div className="l-cta">
-            <a className="l-btn l-btn-primary l-btn-lg" href="/dashboard">
-              Open dashboard
+            <a className="l-btn l-btn-primary l-btn-lg" href="#install">
+              Self-host it
             </a>
             <a
               className="l-btn l-btn-ghost l-btn-lg"
@@ -184,21 +186,33 @@ export function Landing() {
         </div>
       </section>
 
-      <section className="l-cta-band">
+      <section className="l-section l-cta-band" id="install">
         <div className="l-wrap">
-          <h2 className="l-h2">Spin it up in minutes</h2>
+          <p className="l-eyebrow">install</p>
+          <h2 className="l-h2">Self-host it in minutes</h2>
           <p className="l-sub">
-            Runs anywhere Bun runs — your laptop, a VPS, or a Docker container.
+            One command. Your logs stay on your machine — tokenmaxxx reads the agents&apos; own
+            files and streams the dashboard to localhost.
           </p>
-          <div className="l-code">
-            <span className="l-code-prompt">$</span> docker run -p 3000:3000 ghcr.io/shashwotghimire/tokenmaxxx
+          <div className="l-code l-code-block">
+            <span className="l-code-prompt">$</span>
+            <pre>{`docker run -d --name tokenmaxxx -p 3000:3000 \\
+  -v "$HOME/.claude:/root/.claude:ro" \\
+  -v "$HOME/.local/share/opencode:/root/.local/share/opencode:ro" \\
+  -v "$HOME/.codex:/root/.codex:ro" \\
+  -v tokenmaxxx-data:/data \\
+  ghcr.io/shashwotghimire/tokenmaxxx:latest`}</pre>
           </div>
+          <p className="l-sub l-sub-small">
+            Then open <code>http://localhost:3000/dashboard</code>. Or run it directly with
+            <code> bun start</code> if you already have Bun.
+          </p>
           <div className="l-cta">
-            <a className="l-btn l-btn-primary l-btn-lg" href="/dashboard">
-              Open dashboard
+            <a className="l-btn l-btn-primary l-btn-lg" href="https://github.com/shashwotghimire/tokenmaxxx" target="_blank" rel="noreferrer">
+              Get it on GitHub ↗
             </a>
-            <a className="l-btn l-btn-ghost l-btn-lg" href="https://github.com/shashwotghimire/tokenmaxxx" target="_blank" rel="noreferrer">
-              GitHub ↗
+            <a className="l-btn l-btn-ghost l-btn-lg" href="#features">
+              See features
             </a>
           </div>
         </div>

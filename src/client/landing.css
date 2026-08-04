@@ -503,6 +503,42 @@ body {
   font-weight: 700;
 }
 
+.l-code-block {
+  display: block;
+  text-align: left;
+  max-width: 640px;
+  margin: 22px auto 16px;
+}
+
+.l-code-block pre {
+  margin: 0;
+  padding: 10px 0 0;
+  font: inherit;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.l-sub-small {
+  font-size: 12.5px;
+  margin-bottom: 30px;
+}
+
+.l-sub-small code {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.l-sub em {
+  color: var(--text);
+  font-style: normal;
+}
+
 /* ---------- Footer ---------- */
 .l-footer {
   border-top: 1px solid rgba(30, 39, 51, 0.7);

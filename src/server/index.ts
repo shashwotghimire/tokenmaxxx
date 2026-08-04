@@ -25,6 +25,7 @@ import { AGENTS } from "./sources/types";
 const PORT = Number(process.env.PORT || 3000);
 const PROD = process.env.NODE_ENV === "production";
 const DIST = path.join(import.meta.dir, "..", "..", "dist");
+const dashboardEnabled = process.env.ENABLE_DASHBOARD !== "false";
 
 function htmlResponse(file: string): Response {
   return new Response(Bun.file(path.join(DIST, file)), {
@@ -73,6 +74,7 @@ function queryOpts(url: URL): QueryOpts {
 
 function api(handler: (opts: QueryOpts) => unknown) {
   return (req: Request) => {
+    if (!dashboardEnabled) return new Response("Not found", { status: 404 });
     try {
       return Response.json(handler(queryOpts(new URL(req.url))));
     } catch (e) {
@@ -82,20 +84,29 @@ function api(handler: (opts: QueryOpts) => unknown) {
   };
 }
 
-const sources: UsageSource[] = [createClaudeCodeSource(), createOpencodeSource(), createCodexSource()];
+const sources: UsageSource[] = dashboardEnabled ? [createClaudeCodeSource(), createOpencodeSource(), createCodexSource()] : [];
+
+const landingRoute = PROD ? () => htmlResponse("landing.html") : landing;
+const dashboardRoute = dashboardEnabled
+  ? PROD
+    ? () => htmlResponse("index.html")
+    : index
+  : () => new Response(null, { status: 302, headers: { location: "/" } });
 
 const server = serve({
   routes: {
-    "/": PROD ? () => htmlResponse("landing.html") : landing,
+    "/": landingRoute,
 
-    "/dashboard": PROD ? () => htmlResponse("index.html") : index,
+    "/dashboard": dashboardRoute,
 
-    "/assets/sql-wasm.wasm": () => {
-      const wasm = path.join(import.meta.dir, "..", "client", "assets", "sql-wasm.wasm");
-      return new Response(Bun.file(wasm), {
-        headers: { "content-type": "application/wasm", "cache-control": "public, max-age=31536000, immutable" },
-      });
-    },
+    "/assets/sql-wasm.wasm": dashboardEnabled
+      ? () => {
+          const wasm = path.join(import.meta.dir, "..", "client", "assets", "sql-wasm.wasm");
+          return new Response(Bun.file(wasm), {
+            headers: { "content-type": "application/wasm", "cache-control": "public, max-age=31536000, immutable" },
+          });
+        }
+      : () => new Response("Not found", { status: 404 }),
 
     "/api/summary": {
       GET: api((opts) => getSummary(opts)),
@@ -175,7 +186,8 @@ const server = serve({
 
 console.log(`tokenmaxxx running at ${server.url}`);
 console.log(`  API: ${server.url}api/summary  |  WS: ws://localhost:${PORT}/ws`);
-console.log(`Watching sources: ${sources.map((s) => s.id).join(", ")}`);
+console.log(`Dashboard: ${dashboardEnabled ? "enabled" : "disabled (landing only)"}`);
+if (dashboardEnabled) console.log(`Watching sources: ${sources.map((s) => s.id).join(", ")}`);
 
 for (const source of sources) {
   source.watch(
