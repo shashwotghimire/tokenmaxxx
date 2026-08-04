@@ -503,11 +503,42 @@ body {
   font-weight: 700;
 }
 
+.l-os-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 18px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #0a0f16;
+}
+
+.l-os-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-family: inherit;
+  padding: 6px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.l-os-tab:hover {
+  color: var(--text);
+}
+
+.l-os-tab-on {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-weight: 600;
+}
+
 .l-code-block {
   display: block;
   text-align: left;
   max-width: 640px;
-  margin: 22px auto 16px;
+  margin: 12px auto 16px;
 }
 
 .l-code-block pre {

@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./landing.css";
 
@@ -51,7 +51,27 @@ const STEPS = [
   },
 ];
 
+const INSTALL: Record<string, string> = {
+  unix: `docker run -d --name tokenmaxxx -p 3000:3000 \\
+  -v "$HOME/.claude:/root/.claude:ro" \\
+  -v "$HOME/.local/share/opencode:/root/.local/share/opencode:ro" \\
+  -v "$HOME/.codex:/root/.codex:ro" \\
+  -v tokenmaxxx-data:/data \\
+  ghcr.io/shashwotghimire/tokenmaxxx:latest`,
+  powershell: `docker run -d --name tokenmaxxx -p 3000:3000 \`
+  -v "$HOME\\.claude:/root/.claude:ro" \`
+  -v "$HOME\\.local\\share\\opencode:/root/.local/share/opencode:ro" \`
+  -v "$HOME\\.codex:/root/.codex:ro" \`
+  -v tokenmaxxx-data:/data \`
+  ghcr.io/shashwotghimire/tokenmaxxx:latest`,
+  cmd: `docker run -d --name tokenmaxxx -p 3000:3000 -v %USERPROFILE%\\.claude:/root/.claude:ro -v %USERPROFILE%\\.local\\share\\opencode:/root/.local/share/opencode:ro -v %USERPROFILE%\\.codex:/root/.codex:ro -v tokenmaxxx-data:/data ghcr.io/shashwotghimire/tokenmaxxx:latest`,
+};
+
+const PROMPT: Record<string, string> = { unix: "$", powershell: "PS>", cmd: ">" };
+
 export function Landing() {
+  const [os, setOs] = useState<"unix" | "powershell" | "cmd">("unix");
+
   return (
     <div className="landing">
       <nav className="l-nav">
@@ -194,14 +214,26 @@ export function Landing() {
             One command. Your logs stay on your machine — tokenmaxxx reads the agents&apos; own
             files and streams the dashboard to localhost.
           </p>
+          <div className="l-os-tabs">
+            {(
+              [
+                ["unix", "macOS / Linux"],
+                ["powershell", "Windows · PowerShell"],
+                ["cmd", "Windows · cmd"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                className={`l-os-tab${os === key ? " l-os-tab-on" : ""}`}
+                onClick={() => setOs(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="l-code l-code-block">
-            <span className="l-code-prompt">$</span>
-            <pre>{`docker run -d --name tokenmaxxx -p 3000:3000 \\
-  -v "$HOME/.claude:/root/.claude:ro" \\
-  -v "$HOME/.local/share/opencode:/root/.local/share/opencode:ro" \\
-  -v "$HOME/.codex:/root/.codex:ro" \\
-  -v tokenmaxxx-data:/data \\
-  ghcr.io/shashwotghimire/tokenmaxxx:latest`}</pre>
+            <span className="l-code-prompt">{PROMPT[os]}</span>
+            <pre>{INSTALL[os]}</pre>
           </div>
           <p className="l-sub l-sub-small">
             Then open <code>http://localhost:3000/dashboard</code>. Or run it directly with

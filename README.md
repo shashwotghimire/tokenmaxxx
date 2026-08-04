@@ -21,12 +21,36 @@ log to their default locations.
 Prebuilt images are published to GHCR. Each release is tagged (e.g. `v1.0.0`)
 and `latest` tracks `main`:
 
+**macOS / Linux (bash):**
+
 ```sh
 docker run -d --name tokenmaxxx -p 3000:3000 \
-  -v tokenmaxxx-data:/data \
   -v "$HOME/.claude:/root/.claude:ro" \
+  -v "$HOME/.local/share/opencode:/root/.local/share/opencode:ro" \
+  -v "$HOME/.codex:/root/.codex:ro" \
+  -v tokenmaxxx-data:/data \
   ghcr.io/shashwotghimire/tokenmaxxx:latest
 ```
+
+**Windows · PowerShell:**
+
+```powershell
+docker run -d --name tokenmaxxx -p 3000:3000 `
+  -v "$HOME\.claude:/root/.claude:ro" `
+  -v "$HOME\.local\share\opencode:/root/.local/share/opencode:ro" `
+  -v "$HOME\.codex:/root/.codex:ro" `
+  -v tokenmaxxx-data:/data `
+  ghcr.io/shashwotghimire/tokenmaxxx:latest
+```
+
+**Windows · cmd (single line):**
+
+```sh
+docker run -d --name tokenmaxxx -p 3000:3000 -v %USERPROFILE%\.claude:/root/.claude:ro -v %USERPROFILE%\.local\share\opencode:/root/.local/share/opencode:ro -v %USERPROFILE%\.codex:/root/.codex:ro -v tokenmaxxx-data:/data ghcr.io/shashwotghimire/tokenmaxxx:latest
+```
+
+(Docker Desktop converts the Windows paths to the VM automatically; WSL2
+users can just run the bash version.)
 
 Mount your agent logs read-only at their container paths (`/root/.claude`,
 `/root/.local/share/opencode/opencode.db`, `/root/.codex`) or point the sources
