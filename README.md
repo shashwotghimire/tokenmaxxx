@@ -16,6 +16,23 @@ Then open `http://localhost:3000` — a landing page that links to the live
 dashboard at `/dashboard`. That's it — no configuration needed if your agents
 log to their default locations.
 
+## Self-hosting (Docker)
+
+Prebuilt images are published to GHCR. Each release is tagged (e.g. `v1.0.0`)
+and `latest` tracks `main`:
+
+```sh
+docker run -d --name tokenmaxxx -p 3000:3000 \
+  -v tokenmaxxx-data:/data \
+  -v "$HOME/.claude:/root/.claude:ro" \
+  ghcr.io/shashwotghimire/tokenmaxxx:latest
+```
+
+Mount your agent logs read-only at their container paths (`/root/.claude`,
+`/root/.local/share/opencode/opencode.db`, `/root/.codex`) or point the sources
+at them with `TOKENMAXXX_CLAUDE_PATH`, `TOKENMAXXX_OPENCODE_DB`,
+`TOKENMAXXX_CODEX_DB`. The SQLite database persists in `/data`.
+
 ## What it shows
 
 - **Live ticker** — session token + cost totals, updated within ~1–2s of a
