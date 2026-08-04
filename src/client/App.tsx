@@ -6,12 +6,13 @@ import { ModelTable } from "./components/ModelTable";
 import { AgentTable } from "./components/AgentTable";
 import { DailyView } from "./components/DailyView";
 import { HourlyView } from "./components/HourlyView";
+import { ForecastView } from "./components/ForecastView";
 import { ContributionGraph } from "./components/ContributionGraph";
 import { StatsView } from "./components/StatsView";
 import { SessionsTable } from "./components/SessionsTable";
 import "./styles.css";
 
-type Tab = "overview" | "models" | "agents" | "sessions" | "daily" | "hourly" | "stats";
+type Tab = "overview" | "models" | "agents" | "sessions" | "daily" | "hourly" | "forecast" | "stats";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -20,6 +21,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "sessions", label: "Sessions" },
   { id: "daily", label: "Daily" },
   { id: "hourly", label: "Hourly" },
+  { id: "forecast", label: "Forecast" },
   { id: "stats", label: "Stats" },
 ];
 
@@ -64,6 +66,7 @@ export function App() {
         {tab === "sessions" && <SessionsTable refreshKey={refreshKey} sessionSeq={sessionSeq} />}
         {tab === "daily" && <DailyView refreshKey={refreshKey} />}
         {tab === "hourly" && <HourlyView refreshKey={refreshKey} />}
+        {tab === "forecast" && <ForecastView refreshKey={refreshKey} />}
         {tab === "stats" && <StatsView refreshKey={refreshKey} />}
       </main>
     </div>

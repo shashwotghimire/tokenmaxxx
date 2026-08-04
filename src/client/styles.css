@@ -411,6 +411,61 @@ tr.row-open:hover {
   white-space: nowrap;
 }
 
+/* Forecast */
+.bar-forecast {
+  background: var(--green);
+  opacity: 0.9;
+}
+
+.bar-sep {
+  position: relative;
+}
+
+.bar-sep::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 22px;
+  left: -2px;
+  width: 1px;
+  background: var(--border);
+}
+
+.forecast-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 5px;
+}
+
+.legend-history {
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.legend-forecast {
+  background: var(--green);
+}
+
+.forecast-headline {
+  margin-top: 12px;
+}
+
+.forecast-meta {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
 /* Filters */
 .filters {
   display: flex;

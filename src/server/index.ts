@@ -5,8 +5,7 @@ import { createClaudeCodeSource } from "./sources/claudeCode";
 import { createOpencodeSource } from "./sources/opencode";
 import { createCodexSource } from "./sources/codex";
 import type { UsageEvent, UsageSource, SessionInfo } from "./sources/types";
-import {
-  getSummary,
+import { getSummary,
   getDaily,
   getHourly,
   getModelBreakdown,
@@ -18,6 +17,8 @@ import {
   handleSession,
   parseQueryDate,
 } from "./aggregator";
+import { buildForecast } from "./forecast";
+import { AGENTS } from "./sources/types";
 
 const PORT = Number(process.env.PORT || 3000);
 
@@ -37,6 +38,7 @@ interface QueryOpts {
   since?: number;
   until?: number;
   days?: number;
+  horizon?: number;
 }
 
 function queryOpts(url: URL): QueryOpts {
@@ -45,7 +47,9 @@ function queryOpts(url: URL): QueryOpts {
   const until = parseQueryDate(url.searchParams.get("until") ?? "");
   const daysRaw = url.searchParams.get("days");
   const days = daysRaw ? Number(daysRaw) : undefined;
-  return { agent, since, until, days };
+  const horizonRaw = url.searchParams.get("horizon");
+  const horizon = horizonRaw ? Number(horizonRaw) : undefined;
+  return { agent, since, until, days, horizon };
 }
 
 function api(handler: (opts: QueryOpts) => unknown) {
@@ -95,6 +99,17 @@ const server = serve({
 
     "/api/sessions": {
       GET: api((opts) => getSessions(opts)),
+    },
+
+    "/api/forecast": {
+      GET: api((opts) => {
+        const overall = buildForecast({ agent: opts.agent, horizon: opts.horizon });
+        const agents: Record<string, ReturnType<typeof buildForecast>> = {};
+        for (const id of Object.values(AGENTS)) {
+          agents[id] = buildForecast({ agent: id, horizon: opts.horizon });
+        }
+        return { asOf: Date.now(), overall, agents };
+      }),
     },
   },
 

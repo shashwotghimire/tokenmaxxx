@@ -12,6 +12,10 @@ export function getDbPath(): string {
 
 let _db: Database | null = null;
 
+export function resetDb(): void {
+  _db = null;
+}
+
 export function getDb(): Database {
   if (_db) return _db;
   const dbPath = getDbPath();
