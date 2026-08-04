@@ -91,10 +91,46 @@ body {
   border-color: rgba(63, 185, 80, 0.45);
 }
 
+.connect-detect {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.badge-os {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.connect-paths {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.connect-paths code {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11.5px;
+}
+
 .connect-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+.connect-actions p.muted {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 12px;
 }
 
 .connect-sources {
@@ -548,6 +584,56 @@ tr.row-open:hover {
 
 .btn:hover {
   color: var(--text);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  color: var(--bg);
+  filter: brightness(1.1);
+}
+
+.btn-agent {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-agent:hover {
+  border-color: var(--accent);
+}
+
+.brand-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.brand-tile-claude {
+  background: #d97757;
+  color: #fff;
+}
+
+.brand-tile-codex {
+  background: #fff;
+  color: #000;
+}
+
+.brand-tile-opencode {
+  background: #201d1d;
+  color: #fdfcfc;
+  border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 .btn-active {
