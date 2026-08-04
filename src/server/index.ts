@@ -25,7 +25,9 @@ import { AGENTS } from "./sources/types";
 const PORT = Number(process.env.PORT || 3000);
 const PROD = process.env.NODE_ENV === "production";
 const DIST = path.join(import.meta.dir, "..", "..", "dist");
-const dashboardEnabled = process.env.ENABLE_DASHBOARD !== "false";
+const onRender = process.env.RENDER_SERVICE_ID !== undefined;
+const dashboardEnabled =
+  process.env.ENABLE_DASHBOARD === "true" || (process.env.ENABLE_DASHBOARD !== "false" && !onRender);
 
 function htmlResponse(file: string): Response {
   return new Response(Bun.file(path.join(DIST, file)), {
