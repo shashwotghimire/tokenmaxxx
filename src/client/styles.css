@@ -48,6 +48,11 @@ body {
   margin: 0;
 }
 
+.brand-link {
+  color: var(--text);
+  text-decoration: none;
+}
+
 .conn {
   display: inline-flex;
   align-items: center;

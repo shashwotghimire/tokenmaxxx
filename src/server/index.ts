@@ -1,6 +1,7 @@
 import { serve } from "bun";
 import type { ServerWebSocket } from "bun";
 import index from "../client/index.html";
+import landing from "../client/landing.html";
 import { createClaudeCodeSource } from "./sources/claudeCode";
 import { createOpencodeSource } from "./sources/opencode";
 import { createCodexSource } from "./sources/codex";
@@ -67,7 +68,9 @@ const sources: UsageSource[] = [createClaudeCodeSource(), createOpencodeSource()
 
 const server = serve({
   routes: {
-    "/": index,
+    "/": landing,
+
+    "/dashboard": index,
 
     "/api/summary": {
       GET: api((opts) => getSummary(opts)),

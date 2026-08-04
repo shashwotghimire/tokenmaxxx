@@ -34,7 +34,9 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1 className="brand">tokenmaxxx</h1>
+        <a className="brand-link" href="/">
+          <h1 className="brand">tokenmaxxx</h1>
+        </a>
         <div className={`conn ${connected ? "conn-open" : "conn-reconnecting"}`}>
           <span className="dot" />
           {connected ? "live" : state === "connecting" ? "connecting…" : "reconnecting…"}

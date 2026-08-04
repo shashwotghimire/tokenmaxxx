@@ -12,8 +12,9 @@ bun install
 bun run dev
 ```
 
-Then open `http://localhost:3000`. That's it — no configuration needed if
-your agents log to their default locations.
+Then open `http://localhost:3000` — a landing page that links to the live
+dashboard at `/dashboard`. That's it — no configuration needed if your agents
+log to their default locations.
 
 ## What it shows
 
