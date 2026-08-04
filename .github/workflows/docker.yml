@@ -65,15 +65,10 @@ jobs:
 
   deploy:
     needs: build-and-push
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && secrets.RENDER_DEPLOY_HOOK_URL != ''
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render deploy
-        run: |
-          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "::error::RENDER_DEPLOY_HOOK_URL secret is not set. Add it in Settings -> Secrets and variables -> Actions."
-            exit 1
-          fi
-          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+        run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
