@@ -11,7 +11,7 @@ ENV NODE_ENV=production \
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json bunfig.toml pricing.json ./
 COPY src ./src
-RUN mkdir -p /data && chmod 0777 /data
+RUN bun run build && mkdir -p /data && chmod 0777 /data
 VOLUME /data
 EXPOSE 3000
 CMD ["bun", "src/server/index.ts"]

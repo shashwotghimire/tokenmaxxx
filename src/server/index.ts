@@ -23,6 +23,23 @@ import { buildForecast } from "./forecast";
 import { AGENTS } from "./sources/types";
 
 const PORT = Number(process.env.PORT || 3000);
+const PROD = process.env.NODE_ENV === "production";
+const DIST = path.join(import.meta.dir, "..", "..", "dist");
+
+function htmlResponse(file: string): Response {
+  return new Response(Bun.file(path.join(DIST, file)), {
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
+}
+
+async function serveStatic(p: string): Promise<Response | null> {
+  const base = path.basename(p);
+  if (!/^chunk-[A-Za-z0-9_-]+\.(css|js|js\.map)$/.test(base)) return null;
+  const file = Bun.file(path.join(DIST, base));
+  if (!(await file.exists())) return null;
+  const type = base.endsWith(".js.map") ? "application/json" : base.endsWith(".js") ? "text/javascript" : "text/css";
+  return new Response(file, { headers: { "content-type": type } });
+}
 
 const clients = new Set<ServerWebSocket>();
 
@@ -69,9 +86,9 @@ const sources: UsageSource[] = [createClaudeCodeSource(), createOpencodeSource()
 
 const server = serve({
   routes: {
-    "/": landing,
+    "/": PROD ? () => htmlResponse("landing.html") : landing,
 
-    "/dashboard": index,
+    "/dashboard": PROD ? () => htmlResponse("index.html") : index,
 
     "/assets/sql-wasm.wasm": () => {
       const wasm = path.join(import.meta.dir, "..", "client", "assets", "sql-wasm.wasm");
@@ -131,6 +148,9 @@ const server = serve({
         return;
       }
       return new Response("WebSocket upgrade failed", { status: 400 });
+    }
+    if (PROD && url.pathname.startsWith("/chunk-")) {
+      return serveStatic(url.pathname);
     }
     return new Response("Not found", { status: 404 });
   },
