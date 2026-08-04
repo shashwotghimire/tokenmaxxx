@@ -119,10 +119,30 @@ function groupBy<T>(evts: UsageEvent[], key: (e: UsageEvent) => string): { key: 
   return [...map.entries()].map(([key, totals]) => ({ key, totals }));
 }
 
-export function aggregateModels(evts: UsageEvent[], opts: QueryOpts): { model: string; totals: Breakdown }[] {
-  return groupBy(filterEvents(evts, opts), (e) => e.model)
-    .sort((a, b) => b.totals.totalTokens - a.totals.totalTokens)
-    .map((g) => ({ model: g.key, totals: g.totals }));
+export function aggregateModels(evts: UsageEvent[], opts: QueryOpts): { model: string; agent: string; totals: Breakdown }[] {
+  const byModel = new Map<string, Breakdown>();
+  const byModelAgent = new Map<string, Map<string, number>>();
+  for (const e of filterEvents(evts, opts)) {
+    const k = e.model;
+    byModel.set(k, addTo(byModel.get(k) ?? zeroBreakdown(), toBreakdown([e])));
+    const perAgent = byModelAgent.get(k) ?? new Map<string, number>();
+    const total = e.inputTokens + e.outputTokens + e.cacheWriteTokens + e.cacheReadTokens + e.reasoningTokens;
+    perAgent.set(e.agent, (perAgent.get(e.agent) ?? 0) + total);
+    byModelAgent.set(k, perAgent);
+  }
+  return [...byModel.entries()]
+    .map(([model, totals]) => {
+      let agent = "opencode";
+      let best = -1;
+      for (const [a, t] of byModelAgent.get(model) ?? []) {
+        if (t > best) {
+          best = t;
+          agent = a;
+        }
+      }
+      return { model, agent, totals };
+    })
+    .sort((a, b) => b.totals.totalTokens - a.totals.totalTokens);
 }
 
 export function aggregateAgents(evts: UsageEvent[], opts: QueryOpts): { agent: string; totals: Breakdown }[] {

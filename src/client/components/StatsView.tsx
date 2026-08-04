@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchJSON, formatCost, formatTokens } from "../format";
+import { BrandTile, brandForAgent, brandForModel } from "./brand-icons";
+import type { BrandKind } from "./brand-icons";
 
 interface Stats {
   totals: {
@@ -36,26 +38,29 @@ export function StatsView({ refreshKey }: { refreshKey: string }) {
   if (error) return <section className="card">error loading stats: {error}</section>;
   if (!stats) return <section className="card muted">loading stats…</section>;
 
-  const rows: [string, string][] = [
-    ["total tokens", formatTokens(stats.totals.totalTokens)],
-    ["total cost", formatCost(stats.totals.cost)],
-    ["active days", String(stats.days)],
-    ["current streak", `${stats.streaks.current} day${stats.streaks.current === 1 ? "" : "s"}`],
-    ["longest streak", `${stats.streaks.longest} day${stats.streaks.longest === 1 ? "" : "s"}`],
-    ["busiest day", stats.busiestDay ?? "—"],
-    ["busiest hour", stats.busiestHour !== null ? `${String(stats.busiestHour).padStart(2, "0")}:00` : "—"],
-    ["top model", stats.topModel ?? "—"],
-    ["top agent", stats.topAgent ?? "—"],
+  const rows: { label: string; value: string; brand?: BrandKind | null }[] = [
+    { label: "total tokens", value: formatTokens(stats.totals.totalTokens) },
+    { label: "total cost", value: formatCost(stats.totals.cost) },
+    { label: "active days", value: String(stats.days) },
+    { label: "current streak", value: `${stats.streaks.current} day${stats.streaks.current === 1 ? "" : "s"}` },
+    { label: "longest streak", value: `${stats.streaks.longest} day${stats.streaks.longest === 1 ? "" : "s"}` },
+    { label: "busiest day", value: stats.busiestDay ?? "—" },
+    { label: "busiest hour", value: stats.busiestHour !== null ? `${String(stats.busiestHour).padStart(2, "0")}:00` : "—" },
+    { label: "top model", value: stats.topModel ?? "—", brand: stats.topModel ? brandForModel(stats.topModel) : null },
+    { label: "top agent", value: stats.topAgent ?? "—", brand: stats.topAgent ? brandForAgent(stats.topAgent) : null },
   ];
 
   return (
     <section className="card">
       <h2>Stats</h2>
       <div className="stat-grid">
-        {rows.map(([label, value]) => (
-          <div className="stat" key={label}>
-            <div className="stat-label">{label}</div>
-            <div className="stat-value">{value}</div>
+        {rows.map((row) => (
+          <div className="stat" key={row.label}>
+            <div className="stat-label">{row.label}</div>
+            <div className="stat-value">
+              {row.brand && <BrandTile kind={row.brand} size={16} />}
+              {row.value}
+            </div>
           </div>
         ))}
       </div>

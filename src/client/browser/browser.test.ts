@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { parseClaudeFile, parseMessageData, readCodexDb, readOpencodeDb } from "./readers";
-import { computeStreaks, fmtLocalDate, aggregateDaily, aggregateStats } from "./aggregate";
+import { computeStreaks, fmtLocalDate, aggregateDaily, aggregateModels, aggregateStats } from "./aggregate";
 import { buildForecastFromEvents } from "./forecast";
 import { setBrowserData, disconnect, maybeBrowserApi } from "./store";
 import type { UsageEvent } from "./types";
@@ -120,6 +120,14 @@ describe("aggregation", () => {
     const stats = aggregateStats(evts, {});
     expect(stats.days).toBe(1);
     expect(stats.topModel).toBe("gpt-5");
+  });
+
+  test("aggregateModels attributes each model to its agent", () => {
+    const rows = aggregateModels(evts, {});
+    const byModel = new Map(rows.map((r) => [r.model, r.agent]));
+    expect(byModel.get("claude-3-7")).toBe("claude-code");
+    expect(byModel.get("gpt-5")).toBe("opencode");
+    expect(rows.map((r) => r.model)).toEqual(["claude-3-7", "gpt-5"]);
   });
 
   test("computeStreaks handles gaps", () => {

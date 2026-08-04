@@ -1,13 +1,15 @@
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./landing.css";
+import { BrandTile } from "./components/brand-icons";
+import type { BrandKind } from "./components/brand-icons";
 
 const BARS = [18, 34, 26, 48, 42, 64, 56, 78, 70, 92, 84, 100, 66, 88, 74, 96, 90, 108, 82, 118];
 
-const AGENTS = [
-  { name: "Claude Code", tag: "claude-code", color: "var(--yellow)" },
-  { name: "OpenCode", tag: "opencode", color: "var(--accent)" },
-  { name: "Codex CLI", tag: "codex", color: "var(--green)" },
+const AGENTS: { name: string; tag: string; brand: BrandKind }[] = [
+  { name: "Claude Code", tag: "claude-code", brand: "claude" },
+  { name: "OpenCode", tag: "opencode", brand: "opencode" },
+  { name: "Codex CLI", tag: "codex", brand: "codex" },
 ];
 
 const FEATURES = [
@@ -165,7 +167,7 @@ export function Landing() {
           <div className="l-agent-row">
             {AGENTS.map((a) => (
               <div className="l-agent" key={a.name}>
-                <span className="l-agent-dot" style={{ background: a.color }} />
+                <BrandTile kind={a.brand} size={20} />
                 {a.name}
                 <code>{a.tag}</code>
               </div>

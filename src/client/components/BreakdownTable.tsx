@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { fetchJSON, formatCost, formatTokens } from "../format";
 import { SortTh, useSearchSort } from "../sort";
+import { BrandTile, brandForAgent } from "./brand-icons";
 
 export interface BreakdownRow {
   key: string;
+  agent?: string;
   totals: {
     inputTokens: number;
     outputTokens: number;
@@ -43,7 +45,10 @@ export function BreakdownTable({ refreshKey, kind }: Props) {
   useEffect(() => {
     let alive = true;
     fetchJSON<RawBreakdownRow[]>(`/api/${kind === "model" ? "models" : "agents"}`)
-      .then((r) => alive && setRows(r.map((row) => ({ key: kind === "model" ? row.model! : row.agent!, totals: row.totals }))))
+      .then((r) =>
+        alive &&
+        setRows(r.map((row) => ({ key: kind === "model" ? row.model! : row.agent!, agent: row.agent, totals: row.totals }))),
+      )
       .catch((e) => alive && setError(String(e)));
     return () => {
       alive = false;
@@ -121,19 +126,25 @@ export function BreakdownTable({ refreshKey, kind }: Props) {
           </tr>
         </thead>
         <tbody>
-          {sorted.map((r) => (
-            <tr key={r.key}>
-              <td className={kind === "agent" ? `badge-cell badge-${r.key}` : ""}>
-                {kind === "agent" ? <span className={`badge badge-${r.key}`}>{r.key}</span> : r.key}
-              </td>
-              <td>{formatTokens(r.totals.inputTokens)}</td>
-              <td>{formatTokens(r.totals.outputTokens)}</td>
-              <td>{formatTokens(r.totals.cacheReadTokens)}</td>
-              <td>{formatTokens(r.totals.cacheWriteTokens)}</td>
-              <td className="strong">{formatTokens(r.totals.totalTokens)}</td>
-              <td className="strong">{formatCost(r.totals.cost)}</td>
-            </tr>
-          ))}
+          {sorted.map((r) => {
+            const brand = kind === "agent" ? brandForAgent(r.key) : r.agent ? brandForAgent(r.agent) : null;
+            return (
+              <tr key={r.key}>
+                <td className={kind === "agent" ? `badge-cell badge-${r.key}` : ""}>
+                  <div className="name-cell">
+                    {brand && <BrandTile kind={brand} size={16} />}
+                    {kind === "agent" ? <span className={`badge badge-${r.key}`}>{r.key}</span> : <span>{r.key}</span>}
+                  </div>
+                </td>
+                <td>{formatTokens(r.totals.inputTokens)}</td>
+                <td>{formatTokens(r.totals.outputTokens)}</td>
+                <td>{formatTokens(r.totals.cacheReadTokens)}</td>
+                <td>{formatTokens(r.totals.cacheWriteTokens)}</td>
+                <td className="strong">{formatTokens(r.totals.totalTokens)}</td>
+                <td className="strong">{formatCost(r.totals.cost)}</td>
+              </tr>
+            );
+          })}
         </tbody>
         <tfoot>
           <tr className="table-total">

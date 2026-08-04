@@ -293,6 +293,15 @@ body {
   font-variant-numeric: tabular-nums;
   margin-top: 2px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .stat-cost .stat-value {

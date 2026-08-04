@@ -80,6 +80,14 @@ test("model breakdown groups by model", () => {
   expect(map.get("gpt-5.5")).toBe(4000);
 });
 
+test("model breakdown includes dominant agent per model", () => {
+  const m = getModelBreakdown({});
+  const map = new Map(m.map((r) => [r.model, r.agent]));
+  expect(map.get("claude-opus-4-6")).toBe("claude-code");
+  expect(map.get("claude-sonnet-4-6")).toBe("opencode");
+  expect(map.get("gpt-5.5")).toBe("codex");
+});
+
 test("agent breakdown groups by agent", () => {
   const a = getAgentBreakdown({});
   const map = new Map(a.map((r) => [r.agent, r.totals.inputTokens]));

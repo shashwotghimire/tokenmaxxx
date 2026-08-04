@@ -278,7 +278,7 @@ export function getHourly(opts: QueryOptions & { date?: string; days?: number })
   return rows.map((r) => ({ hour: r.hour, totals: toBreakdown(r) }));
 }
 
-export function getModelBreakdown(opts: QueryOptions): { model: string; totals: ReturnType<typeof toBreakdown> }[] {
+export function getModelBreakdown(opts: QueryOptions): { model: string; agent: string; totals: ReturnType<typeof toBreakdown> }[] {
   const { where, params } = buildWhere(opts);
   const rows = getDb()
     .query(
@@ -295,7 +295,27 @@ export function getModelBreakdown(opts: QueryOptions): { model: string; totals: 
        ORDER BY (input_tokens + output_tokens + cache_write_tokens + cache_read_tokens + reasoning_tokens) DESC`
     )
     .all(...params) as ({ model: string } & TotalsRow)[];
-  return rows.map((r) => ({ model: r.model, totals: toBreakdown(r) }));
+
+  const perAgent = getDb()
+    .query(
+      `SELECT model, agent,
+        (input_tokens + output_tokens + cache_write_tokens + cache_read_tokens + reasoning_tokens) as total
+       FROM usage_events ${where}
+       GROUP BY model, agent`
+    )
+    .all(...params) as { model: string; agent: string; total: number }[];
+
+  const dominant = new Map<string, { agent: string; total: number }>();
+  for (const r of perAgent) {
+    const cur = dominant.get(r.model);
+    if (!cur || r.total > cur.total) dominant.set(r.model, { agent: r.agent, total: r.total });
+  }
+
+  return rows.map((r) => ({
+    model: r.model,
+    agent: dominant.get(r.model)?.agent ?? "opencode",
+    totals: toBreakdown(r),
+  }));
 }
 
 export function getAgentBreakdown(opts: QueryOptions): { agent: string; totals: ReturnType<typeof toBreakdown> }[] {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchJSON, formatCost, formatTokens } from "../format";
 import { SortTh, useSearchSort } from "../sort";
+import { BrandTile, brandForAgent } from "./brand-icons";
 
 interface Session {
   agent: string;
@@ -151,10 +152,18 @@ function SessionRow({
     <>
       <tr className={open ? "row-open" : ""} onClick={onToggle}>
         <td>
-          <span className={`badge badge-${s.agent}`}>{s.agent}</span>
+          <div className="name-cell">
+            {brandForAgent(s.agent) && <BrandTile kind={brandForAgent(s.agent)!} size={16} />}
+            <span className={`badge badge-${s.agent}`}>{s.agent}</span>
+          </div>
         </td>
         <td className="sess-title">{s.title ?? <span className="muted">untitled</span>}</td>
-        <td className="muted">{s.model ?? "—"}</td>
+        <td className="muted">
+          <div className="name-cell">
+            {brandForAgent(s.agent) && <BrandTile kind={brandForAgent(s.agent)!} size={16} />}
+            <span>{s.model ?? "—"}</span>
+          </div>
+        </td>
         <td className="strong">{formatTokens(s.tokens)}</td>
         <td className="strong">{formatCost(s.cost)}</td>
         <td className="muted">{formatTime(s.timeUpdated)}</td>

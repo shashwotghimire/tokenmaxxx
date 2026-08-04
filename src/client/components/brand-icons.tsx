@@ -38,6 +38,21 @@ const TILES = {
 
 export type BrandKind = keyof typeof TILES;
 
+/** Map a normalized agent id to a brand, or null for unknown agents. */
+export function brandForAgent(agent: string): BrandKind | null {
+  if (agent === "claude-code") return "claude";
+  if (agent === "opencode") return "opencode";
+  if (agent === "codex") return "codex";
+  return null;
+}
+
+/** Best-effort brand inference from a model name (no agent context available). */
+export function brandForModel(model: string): BrandKind | null {
+  if (model.startsWith("claude")) return "claude";
+  if (model.startsWith("codex")) return "codex";
+  return null;
+}
+
 export function BrandTile({ kind, size = 18 }: { kind: BrandKind; size?: number }) {
   const Icon = { claude: ClaudeIcon, codex: CodexIcon, opencode: OpenCodeIcon }[kind];
   return (
