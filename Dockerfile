@@ -9,7 +9,7 @@ ENV NODE_ENV=production \
     PORT=3000 \
     TOKENMAXXX_DB_PATH=/data/usage.db
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json bunfig.toml pricing.json build.ts ./
+COPY package.json bunfig.toml pricing.json build.ts tokens.css ./
 COPY src ./src
 RUN bun run build && mkdir -p /data && chmod 0777 /data
 VOLUME /data
