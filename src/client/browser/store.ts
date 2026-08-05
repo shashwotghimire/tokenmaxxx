@@ -1,4 +1,4 @@
-import { computeStreaks, aggregateSummary, aggregateDaily, aggregateHourly, aggregateModels, aggregateAgents, aggregateContributions, aggregateStats, fmtLocalDate, sortSessions, toBreakdown } from "./aggregate";
+import { computeStreaks, aggregateSummary, aggregateDaily, aggregateHourly, aggregateModels, aggregateAgents, aggregateContributions, aggregateStats, fmtLocalDate, sortSessions, toBreakdown, filterEvents } from "./aggregate";
 import { buildForecastFromEvents } from "./forecast";
 import type { SessionInfo, UsageEvent } from "./types";
 import { AGENTS } from "../../server/sources/types";
@@ -104,6 +104,10 @@ export function maybeBrowserApi(url: string): unknown | null {
       return aggregateStats(events, opts);
     case "/api/sessions":
       return sortSessions(sessions, opts.limit ?? 500);
+    case "/api/export/events":
+      return filterEvents(events, opts).slice(0, opts.limit ?? 100_000);
+    case "/api/export/sessions":
+      return sortSessions(sessions, opts.limit ?? 100_000);
     case "/api/forecast": {
       const overall = buildForecastFromEvents(events, undefined, { horizon: opts.horizon });
       const agents: Record<string, ReturnType<typeof buildForecastFromEvents>> = {};

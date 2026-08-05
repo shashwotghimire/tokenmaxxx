@@ -15,11 +15,14 @@ import { getSummary,
   getContributionGraph,
   getStats,
   getSessions,
+  getAllEvents,
   handleEvent,
   handleSession,
   parseQueryDate,
 } from "./aggregator";
+import { eventsToCsv, sessionsToCsv } from "./export";
 import { buildForecast } from "./forecast";
+import { getSkills } from "./skills";
 import { AGENTS } from "./sources/types";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -84,6 +87,49 @@ function api(handler: (opts: QueryOpts) => unknown) {
       return Response.json({ error: String(e) }, { status: 500 });
     }
   };
+}
+
+function handleExport(req: Request, kind: "events" | "sessions"): Response {
+  if (!dashboardEnabled) return new Response("Not found", { status: 404 });
+  try {
+    const url = new URL(req.url);
+    const opts = queryOpts(url);
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Math.max(1, Math.min(Number(limitRaw) || 100_000, 1_000_000)) : undefined;
+    const format = url.searchParams.get("format") === "csv" ? "csv" : "json";
+
+    let body: string;
+    let type: string;
+    if (kind === "events") {
+      const events = getAllEvents({ ...opts, limit });
+      if (format === "csv") {
+        body = eventsToCsv(events);
+        type = "text/csv";
+      } else {
+        body = JSON.stringify(events, null, 2);
+        type = "application/json";
+      }
+    } else {
+      const sessions = getSessions({ ...opts, limit });
+      if (format === "csv") {
+        body = sessionsToCsv(sessions);
+        type = "text/csv";
+      } else {
+        body = JSON.stringify(sessions, null, 2);
+        type = "application/json";
+      }
+    }
+    const file = kind === "events" ? "tokenmaxxx-events" : "tokenmaxxx-sessions";
+    return new Response(body, {
+      headers: {
+        "content-type": `${type}; charset=utf-8`,
+        "content-disposition": `attachment; filename="${file}.${format}"`,
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    return Response.json({ error: String(e) }, { status: 500 });
+  }
 }
 
 const sources: UsageSource[] = dashboardEnabled ? [createClaudeCodeSource(), createOpencodeSource(), createCodexSource()] : [];
@@ -151,6 +197,26 @@ const server = serve({
         }
         return { asOf: Date.now(), overall, agents };
       }),
+    },
+
+    "/api/skills": {
+      GET: () => {
+        if (!dashboardEnabled) return new Response("Not found", { status: 404 });
+        return getSkills()
+          .then((s) => Response.json(s))
+          .catch((e) => {
+            console.error(e);
+            return Response.json({ error: String(e) }, { status: 500 });
+          });
+      },
+    },
+
+    "/api/export/events": {
+      GET: (req) => handleExport(req, "events"),
+    },
+
+    "/api/export/sessions": {
+      GET: (req) => handleExport(req, "sessions"),
     },
   },
 

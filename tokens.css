@@ -1,0 +1,108 @@
+:root {
+  /* Cobalt · cool engineered paper · one electric-blue signal · hairlines */
+  color-scheme: light;
+  --color-paper:      oklch(98.5% 0.004 250);
+  --color-paper-2:    oklch(95.8% 0.006 250);
+  --color-paper-3:    oklch(93%   0.008 250);
+  --color-ink:        oklch(24%   0.020 258);
+  --color-ink-2:      oklch(34%   0.018 257);
+  --color-neutral:    oklch(48%   0.016 255);
+  --color-muted:      oklch(41%   0.018 255);
+  --color-rule:       oklch(89%   0.010 250);
+  --color-rule-2:     oklch(78%   0.014 250);
+  --color-accent:     oklch(58%   0.20  256);
+  --color-accent-ink: oklch(99%   0.004 250);
+  --color-focus:      oklch(52%   0.19  256);
+  --color-graphite:   oklch(22%   0.016 260);
+  --color-graphite-2: oklch(28%   0.018 260);
+  --color-on-dark:       oklch(94%   0.006 260);
+  --color-on-dark-muted: oklch(72%   0.010 260);
+  --color-ok:         oklch(55%   0.13  150);
+  --color-warn:       oklch(58%   0.14  70);
+  --color-error:      oklch(55%   0.20  25);
+
+  --color-cell-0: var(--color-paper-3);
+  --color-cell-1: oklch(94%   0.06  150);
+  --color-cell-2: oklch(87%   0.12  150);
+  --color-cell-3: oklch(74%   0.16  150);
+  --color-cell-4: oklch(55%   0.16  150);
+
+  --color-tooltip-bg:     oklch(22% 0.02 258);
+  --color-tooltip-text:   oklch(94% 0.006 260);
+  --color-tooltip-muted:  oklch(70% 0.012 260);
+  --color-tooltip-border: oklch(94% 0.006 260 / 0.16);
+
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-body:    "Inter", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --space-3xs: 0.125rem;
+  --space-2xs: 0.25rem;
+  --space-xs:  0.5rem;
+  --space-sm:  0.75rem;
+  --space-md:  1rem;
+  --space-lg:  1.5rem;
+  --space-xl:  2.5rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6rem;
+
+  --text-xs:    0.6875rem;
+  --text-sm:    0.8125rem;
+  --text-base:  1rem;
+  --text-md:    1.25rem;
+  --text-lg:    1.5625rem;
+  --text-xl:    1.9531rem;
+  --text-2xl:   2.4414rem;
+  --text-3xl:   3.0518rem;
+  --text-display: clamp(2.5rem, 5vw + 0.5rem, 4.75rem);
+  --text-display-hero: clamp(2.1rem, 3.1vw + 1rem, 3.25rem);
+
+  --ease-out:     cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:      cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out:  cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long:  420ms;
+
+  --radius-control: 6px;
+  --radius-card:    10px;
+  --radius-pill:    999px;
+
+  --z-base: 1;
+  --z-raised: 10;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+}
+
+html[data-theme="dark"] {
+  /* Cobalt dark · cool charcoal panels · same electric-blue signal */
+  color-scheme: dark;
+  --color-paper:      oklch(24%   0.016 258);
+  --color-paper-2:    oklch(28%   0.018 258);
+  --color-paper-3:    oklch(32%   0.020 258);
+  --color-ink:        oklch(94%   0.006 260);
+  --color-ink-2:      oklch(85%   0.008 260);
+  --color-neutral:    oklch(66%   0.012 260);
+  --color-muted:      oklch(68%   0.014 260);
+  --color-rule:       oklch(37%   0.020 258);
+  --color-rule-2:     oklch(48%   0.020 258);
+  --color-accent:     oklch(63%   0.19  256);
+  --color-accent-ink: oklch(99%   0.004 250);
+  --color-focus:      oklch(66%   0.19  256);
+  --color-graphite:   oklch(18%   0.012 260);
+  --color-graphite-2: oklch(24%   0.016 258);
+  --color-on-dark:       oklch(94%   0.006 260);
+  --color-on-dark-muted: oklch(70%   0.012 260);
+  --color-ok:         oklch(65%   0.14  150);
+  --color-warn:       oklch(72%   0.13  70);
+  --color-error:      oklch(66%   0.19  25);
+
+  --color-cell-0: oklch(30%   0.020 258);
+  --color-cell-1: oklch(38%   0.070 150);
+  --color-cell-2: oklch(48%   0.100 150);
+  --color-cell-3: oklch(60%   0.130 150);
+  --color-cell-4: oklch(72%   0.160 150);
+}

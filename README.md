@@ -68,6 +68,11 @@ picker support, and the one-click permission is per session.
 
 ## What it shows
 
+- **Sound alerts** — opt-in, in-browser annoyance: beep and/or voice-announce
+  ("Claude Code just spent 7 dollars and 50 cents") whenever a single usage
+  event crosses a cost threshold. Configurable threshold, beep/voice/both,
+  repeat count, test button, and a snooze. Settings persist in
+  `localStorage`.
 - **Live ticker** — session token + cost totals, updated within ~1–2s of a
   new log line.
 - **Overview** — today's input / output / cache-read / cache-write /
@@ -75,10 +80,20 @@ picker support, and the one-click permission is per session.
 - **Models** — token & cost breakdown per model.
 - **Agents** — token & cost breakdown per agent (Claude Code / OpenCode /
   Codex).
+- **Sessions** — per-session metadata + token/cost totals across all agents.
+- **Skills** — every skill installed on this machine (`<project>/.agents/skills`
+  and `<project>/.claude/skills`, plus global `~/.claude/skills`), with each
+  skill's file count, reference-file count, and an estimated context-injection
+  weight (bytes / 4) so you can spot the skills that quietly burn tokens every
+  time they load. Scans `$HOME` by default; override with
+  `TOKENMAXXX_SKILLS_ROOT` (results cached for 60s).
 - **Daily** — per-day totals with today / week / 30-day / custom date-range
   filters.
 - **Hourly** — per-hour totals for a selected day.
 - **Stats** — totals, streaks, busiest day/hour, top model, top agent.
+- **Export** — download usage events or sessions as CSV/JSON (all time,
+  today, last 7/30 days, per agent) for pivoting in Excel or Notion. Works
+  in browser mode too, exporting whatever logs you loaded.
 
 ## Expected log paths (all optional)
 

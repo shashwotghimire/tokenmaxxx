@@ -137,7 +137,7 @@ interface SessionRow {
 
 export function getSessions(opts: QueryOptions & { limit?: number }): SessionInfo[] {
   const { where, params } = buildWhereUpdated(opts);
-  const limit = Math.min(opts.limit ?? 500, 5000);
+  const limit = Math.min(opts.limit ?? 500, 100_000);
   const rows = getDb()
     .query(
       `SELECT agent, session_id, title, model, cwd, git_branch, tokens, cost,
@@ -164,6 +164,41 @@ export function getSessions(opts: QueryOptions & { limit?: number }): SessionInf
     reasoningTokens: r.reasoning_tokens,
     timeCreated: r.time_created,
     timeUpdated: r.time_updated,
+  }));
+}
+
+export function getAllEvents(opts: QueryOptions & { limit?: number }): (UsageEvent & { cost: number })[] {
+  const { where, params } = buildWhere(opts);
+  const limit = Math.min(opts.limit ?? 100_000, 1_000_000);
+  const rows = getDb()
+    .query(
+      `SELECT agent, model, timestamp, input_tokens, output_tokens,
+              cache_write_tokens, cache_read_tokens, reasoning_tokens, cost
+       FROM usage_events ${where}
+       ORDER BY timestamp DESC
+       LIMIT ${limit}`
+    )
+    .all(...params) as {
+    agent: string;
+    model: string;
+    timestamp: number;
+    input_tokens: number;
+    output_tokens: number;
+    cache_write_tokens: number;
+    cache_read_tokens: number;
+    reasoning_tokens: number;
+    cost: number;
+  }[];
+  return rows.map((r) => ({
+    agent: r.agent as UsageEvent["agent"],
+    model: r.model,
+    timestamp: r.timestamp,
+    inputTokens: r.input_tokens,
+    outputTokens: r.output_tokens,
+    cacheWriteTokens: r.cache_write_tokens,
+    cacheReadTokens: r.cache_read_tokens,
+    reasoningTokens: r.reasoning_tokens,
+    cost: r.cost,
   }));
 }
 
