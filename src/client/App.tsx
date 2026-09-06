@@ -19,6 +19,7 @@ import { ExportView } from "./components/ExportView";
 import { ConnectView } from "./components/ConnectView";
 import { ThemeIcon, useTheme } from "./theme";
 import "./styles.css";
+import "./dashboard-shell.css";
 
 type Tab = "overview" | "models" | "agents" | "sessions" | "skills" | "daily" | "hourly" | "forecast" | "stats";
 
@@ -52,78 +53,149 @@ export function App() {
       ? `${lastEvent.timestamp}:${lastEvent.cost}:${lastEvent.agent}:${lastEvent.model}`
       : "0";
   const connected = state === "open";
+  const sourceLabel = browserMode ? "Browser logs" : "Server stream";
+  const statusLabel = browserMode ? "Local only" : connected ? "Live" : state === "connecting" ? "Connecting" : "Reconnecting";
+
+  const focusTab = (nextIndex: number) => {
+    const next = TABS[(nextIndex + TABS.length) % TABS.length];
+    setTab(next.id);
+    requestAnimationFrame(() => document.getElementById(`dashboard-tab-${next.id}`)?.focus());
+  };
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      focusTab(index + 1);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      focusTab(index - 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      focusTab(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      focusTab(TABS.length - 1);
+    }
+  };
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <a className="brand-link" href="/">
-          <h1 className="brand">tokenmaxxx</h1>
+    <div className="app dashboard-app">
+      <header className="topbar dashboard-topbar">
+        <a className="brand-link" href="/" aria-label="tokenmaxxx home">
+          <h1 className="brand">
+            <span className="brand-mark" aria-hidden="true">t</span>
+            <span>tokenmaxxx</span>
+          </h1>
         </a>
-        <div className="topbar-right">
+
+        <div className="topbar-right dashboard-actions" aria-label="Dashboard controls">
           <button
             className="theme-toggle"
             onClick={toggleTheme}
             aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             title="Toggle theme"
+            type="button"
           >
             <ThemeIcon theme={theme} />
           </button>
-          <button className={`btn ${alerts.settings.enabled ? "btn-active" : ""}`} onClick={() => setShowAlerts((s) => !s)}>
-            Alerts
-          </button>
-          <button className={`btn ${showExport ? "btn-active" : ""}`} onClick={() => setShowExport((s) => !s)}>
-            Export
-          </button>
-          <button className="btn" onClick={() => setShowConnect((s) => !s)}>
-            {browserMode ? "Viewing local logs" : "Connect logs"}
-          </button>
-          <div className={`conn ${browserMode ? "conn-open" : connected ? "conn-open" : "conn-reconnecting"}`}>
-            <span className="dot" />
-            {browserMode
-              ? "browser"
-              : connected
-                ? "live"
-                : state === "connecting"
-                  ? "connecting…"
-                  : "reconnecting…"}
+          <div className="dashboard-action-group">
+            <button
+              className={`btn ${alerts.settings.enabled ? "btn-active" : ""}`}
+              onClick={() => setShowAlerts((s) => !s)}
+              aria-expanded={showAlerts}
+              type="button"
+            >
+              Alerts
+            </button>
+            <button
+              className={`btn ${showExport ? "btn-active" : ""}`}
+              onClick={() => setShowExport((s) => !s)}
+              aria-expanded={showExport}
+              type="button"
+            >
+              Export
+            </button>
+            <button
+              className={`btn ${showConnect ? "btn-active" : ""}`}
+              onClick={() => setShowConnect((s) => !s)}
+              aria-expanded={showConnect}
+              type="button"
+            >
+              {browserMode ? "Local logs" : "Connect logs"}
+            </button>
+          </div>
+          <div className={`conn ${browserMode || connected ? "conn-open" : "conn-reconnecting"}`} aria-live="polite">
+            <span className="dot" aria-hidden="true" />
+            <span>{browserMode ? "browser" : connected ? "live" : state === "connecting" ? "connecting…" : "reconnecting…"}</span>
           </div>
         </div>
       </header>
 
-      {showConnect && <ConnectView />}
-
-      {showAlerts && (
-        <AlertSettings
-          settings={alerts.settings}
-          onChange={alerts.update}
-          snoozedUntil={alerts.snoozedUntil}
-          onSnooze={alerts.snooze}
-          onClearSnooze={alerts.clearSnooze}
-        />
-      )}
-
-      {showExport && <ExportView />}
-
-      {browserMode && (
-        <div className="card muted browser-banner">
-          viewing <strong>{eventCount.toLocaleString()}</strong> events from logs you loaded in this browser —
-          nothing is uploaded to this server
+      <section className="dashboard-heading" aria-labelledby="dashboard-title">
+        <div className="dashboard-heading-copy">
+          <p className="dashboard-eyebrow">Usage telemetry</p>
+          <h2 id="dashboard-title">Token usage, in one operational view.</h2>
+          <p>Inspect live cost, volume, sessions, skills, and forecasts without leaving the dashboard.</p>
         </div>
-      )}
+        <dl className="dashboard-context" aria-label="Current data context">
+          <div>
+            <dt>Source</dt>
+            <dd>{sourceLabel}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>{statusLabel}</dd>
+          </div>
+        </dl>
+      </section>
 
-      <nav className="tabs">
-        {TABS.map((t) => (
+      <div className="dashboard-utilities">
+        {showConnect && <ConnectView />}
+
+        {showAlerts && (
+          <AlertSettings
+            settings={alerts.settings}
+            onChange={alerts.update}
+            snoozedUntil={alerts.snoozedUntil}
+            onSnooze={alerts.snooze}
+            onClearSnooze={alerts.clearSnooze}
+          />
+        )}
+
+        {showExport && <ExportView />}
+
+        {browserMode && (
+          <div className="card muted browser-banner" role="status">
+            viewing <strong>{eventCount.toLocaleString()}</strong> events from logs you loaded in this browser — nothing is uploaded to this server
+          </div>
+        )}
+      </div>
+
+      <nav className="tabs dashboard-tabs" role="tablist" aria-label="Dashboard sections">
+        {TABS.map((t, index) => (
           <button
+            id={`dashboard-tab-${t.id}`}
             key={t.id}
             className={`tab ${tab === t.id ? "tab-active" : ""}`}
             onClick={() => setTab(t.id)}
+            onKeyDown={(event) => handleTabKeyDown(event, index)}
+            role="tab"
+            aria-selected={tab === t.id}
+            aria-controls="dashboard-panel"
+            tabIndex={tab === t.id ? 0 : -1}
+            type="button"
           >
             {t.label}
           </button>
         ))}
       </nav>
 
-      <main className="content">
+      <main
+        id="dashboard-panel"
+        className="content dashboard-content"
+        role="tabpanel"
+        aria-labelledby={`dashboard-tab-${tab}`}
+      >
         {tab === "overview" && (
           <>
             {!browserMode && <LiveTicker lastEvent={lastEvent} />}
