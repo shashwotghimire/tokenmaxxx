@@ -1,9 +1,9 @@
 # tokenmaxxx
 
-A super-minimal, **local-only** web dashboard for real-time AI coding token
+A compact, **local-first** web dashboard for real-time AI coding token
 usage across Claude Code, OpenCode, and Codex CLI. Inspired by the
 [`tokscale`](https://github.com/junhoyeo/tokscale) CLI — but browser only,
-no CLI, no TUI, no accounts, no cloud.
+no CLI, no TUI, no accounts, no cloud sync.
 
 ## Setup
 
@@ -94,6 +94,47 @@ picker support, and the one-click permission is per session.
 - **Export** — download usage events or sessions as CSV/JSON (all time,
   today, last 7/30 days, per agent) for pivoting in Excel or Notion. Works
   in browser mode too, exporting whatever logs you loaded.
+- **Spend & cache** — project/working-directory attribution, period-over-period
+  comparisons, browser-stored budgets, cache hit rate, and measurable hotspots.
+- **Session explorer** — model changes, token categories, timeline, and expensive
+  events when the source exposes stable per-event/session identifiers.
+- **Data quality** — partial measurements, unknown pricing, missing models, and
+  duplicate-resistant records are visible rather than silently treated as zero.
+- **Unified filters** — period, timezone, agent, model, and project apply across
+  applicable views. Saved views omit project values from their shareable URL state.
+- **Privacy mode** — obscures titles and paths for screenshots. Session exports
+  always sanitize titles, redact credentials, and reduce paths to project labels.
+
+## Metric definitions and limitations
+
+- All date ranges are half-open (`since <= timestamp < until`) and evaluated in
+  the selected IANA timezone. An end date selected in the UI is inclusive; the
+  API converts it to the following local midnight. A DST day may be 23 or 25
+  hours, and Asia/Kathmandu uses its +05:45 boundary.
+- Token totals add the categories reported by a provider. **Missing or unsupported
+  is not the same as zero.** Codex currently exposes only a cumulative per-thread
+  token total. tokenmaxxx converts increases to events, attributes that unsplit
+  total to input for aggregation compatibility, and labels output/cache/reasoning
+  as unavailable in session detail.
+- Costs are USD API-equivalent estimates from the versioned bundled table in
+  `pricing.json`, not recorded invoices. Unknown models remain **unpriced**;
+  only an explicitly verified zero rate is shown as free.
+- Cache hit rate is `cache read / (input + cache read)` when both measurements
+  are meaningful. Estimated savings remains unavailable unless an uncached
+  comparison can be supported without inventing rates.
+- Forecast headline and per-agent rows are independently fitted comparisons and
+  are not additive. The UI exposes history size, assumptions, incomplete/low-
+  confidence states, and does not claim backtest accuracy without held-out data.
+- “Live” in server mode means configured sources are polled and new detectable
+  records are pushed while the server and browser are running. Browser mode is a
+  local tab snapshot/rescan and cannot promise background operation.
+
+## Budgets and alerts
+
+Daily allowance settings and alert-deduplication keys live in the current
+browser. They are advisory API-equivalent estimates. Notifications/sounds require
+an explicit browser permission or interaction, run only while the page is active,
+and have no guaranteed background delivery.
 
 ## Expected log paths (all optional)
 

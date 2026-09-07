@@ -18,6 +18,17 @@ one electric cobalt signal, code/data as the hero).
 - App pages: **instrument-panel** — hairline tab strip, stat-led overview, the
   live ticker as the one dark graphite band, tabular mono numbers. No enrichment.
 
+The landing adds one full-width, hairline-separated **mode strip** between the
+hero proof and feature spec. It explains browser-local and self-hosted-server
+origins as an operational contrast, not as feature cards. On narrow screens its
+definition rows become vertical; install controls remain reachable without
+horizontal page overflow.
+
+Dashboard filters form one compact control rail above the tabs. At narrow widths
+they become a two-column, then single-column grid. Tables may scroll within their
+surface; the page itself must not overflow. Privacy mode is a functional viewing
+state, never a decorative blur.
+
 ## Theme
 
 Cobalt. Cool engineered paper, never `#fff`; ink is cool charcoal, never `#000`.
