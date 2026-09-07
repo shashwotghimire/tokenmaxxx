@@ -185,10 +185,19 @@ function SessionRow({
                   </div>
                 ))}
               </div>
+              <SessionTimeline agent={s.agent} sessionId={s.sessionId} />
             </div>
           </td>
         </tr>
       )}
     </>
   );
+}
+
+function SessionTimeline({ agent, sessionId }: { agent: string; sessionId: string }) {
+  const [detail, setDetail] = useState<any>(null);
+  useEffect(() => { fetchJSON(`/api/session-detail?agent=${encodeURIComponent(agent)}&sessionId=${encodeURIComponent(sessionId)}`).then(setDetail).catch(() => setDetail({ unavailable: true })); }, [agent, sessionId]);
+  if (!detail) return <p className="muted">Loading event timeline…</p>;
+  if (detail.unavailable || !detail.timeline?.length) return <p className="muted">Per-event timeline unavailable for this session. The source may expose only session totals.</p>;
+  return <div className="session-timeline"><h3>Usage timeline</h3><p className="muted">{detail.coverage}</p><div className="table-scroll"><table className="table"><thead><tr><th>time</th><th>model</th><th>input</th><th>output</th><th>cache read</th><th>estimated cost</th></tr></thead><tbody>{detail.timeline.map((e: any, i: number) => <tr key={e.sourceEventId ?? i}><td>{formatDateTime(e.timestamp)}</td><td>{e.model}</td><td>{formatTokens(e.inputTokens)}</td><td>{e.measurementStatus === "partial" ? "Unavailable" : formatTokens(e.outputTokens)}</td><td>{e.measurementStatus === "partial" ? "Unavailable" : formatTokens(e.cacheReadTokens)}</td><td>{formatCost(e.cost)}</td></tr>)}</tbody></table></div></div>;
 }

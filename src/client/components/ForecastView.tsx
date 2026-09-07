@@ -39,6 +39,7 @@ const HORIZONS = [7, 14, 30] as const;
 
 export function ForecastView({ refreshKey }: { refreshKey: string }) {
   const [horizon, setHorizon] = useState<number>(7);
+  const [scenario, setScenario] = useState<"baseline" | "workdays" | "quiet" | "busy">("baseline");
   const [data, setData] = useState<ForecastResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const tip = useChartTooltip();
@@ -46,13 +47,13 @@ export function ForecastView({ refreshKey }: { refreshKey: string }) {
   useEffect(() => {
     let alive = true;
     setError(null);
-    fetchJSON<ForecastResponse>(`/api/forecast?horizon=${horizon}`)
+    fetchJSON<ForecastResponse>(`/api/forecast?horizon=${horizon}&scenario=${scenario}`)
       .then((r) => alive && setData(r))
       .catch((e) => alive && setError(String(e)));
     return () => {
       alive = false;
     };
-  }, [refreshKey, horizon]);
+  }, [refreshKey, horizon, scenario]);
 
   if (error) return <section className="card">error: {error}</section>;
   if (!data) return <section className="card muted">loading forecast…</section>;
@@ -88,6 +89,7 @@ export function ForecastView({ refreshKey }: { refreshKey: string }) {
       <div className="table-toolbar">
         <h2>Forecast</h2>
         <div className="filters" style={{ marginBottom: 0 }}>
+          <label>scenario <select value={scenario} onChange={(e) => setScenario(e.target.value as typeof scenario)}><option value="baseline">Expected activity</option><option value="workdays">Workdays only</option><option value="quiet">Quiet · 75%</option><option value="busy">Busy · 125%</option></select></label>
           {HORIZONS.map((h) => (
             <button
               key={h}
@@ -102,11 +104,11 @@ export function ForecastView({ refreshKey }: { refreshKey: string }) {
 
       <div className="stat-grid forecast-headline">
         <div className="stat">
-          <div className="stat-label">predicted tokens · {horizon}d</div>
+          <div className="stat-label">independent overall fit · tokens · {horizon}d</div>
           <div className="stat-value">{formatTokens(cum.tokens)}</div>
         </div>
         <div className="stat stat-cost">
-          <div className="stat-label">predicted cost · {horizon}d</div>
+          <div className="stat-label">independent overall fit · estimated cost · {horizon}d</div>
           <div className="stat-value">{formatCost(cum.cost)}</div>
         </div>
         <div className="stat">
@@ -184,6 +186,7 @@ export function ForecastView({ refreshKey }: { refreshKey: string }) {
       </div>
       {tip.node}
 
+      <p className="forecast-explain">Scenario: <strong>{scenario}</strong>. The headline and each agent row are fitted independently, so agent rows are comparisons—not additive components. Wide intervals mean recent activity is volatile and confidence is low. Forecasts assume recent trend and weekday patterns continue; they are not spending guarantees.</p>
       <table className="table">
         <thead>
           <tr>
@@ -221,8 +224,8 @@ export function ForecastView({ refreshKey }: { refreshKey: string }) {
       </table>
 
       <p className="muted forecast-meta">
-        fitted on {fit.n} days · avg {formatTokens(fit.meanDaily)}/day · residual σ {formatTokens(fit.sigma)}
-        · trend +{Math.round(fit.trendPerDayPct * 100)}%/day · 80% interval
+        history window {overall.windowDays} days ({fit.n} active) · avg {formatTokens(fit.meanDaily)}/day · residual σ {formatTokens(fit.sigma)}
+        · trend {fit.trendPerDayPct >= 0 ? "+" : ""}{Math.round(fit.trendPerDayPct * 100)}%/day · 80% model interval · backtesting unavailable until sufficient held-out history exists
       </p>
     </section>
   );
