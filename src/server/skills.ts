@@ -15,11 +15,15 @@ export interface SkillInfo {
   references: number;
   bytes: number;
   estTokens: number;
+  entryBytes: number;
+  referenceBytes: number;
+  installationCount: number;
 }
 
 export interface SkillsResult {
   roots: string[];
   skills: SkillInfo[];
+  installations: number;
   scannedAt: number;
 }
 
@@ -31,7 +35,8 @@ const MAIN_PATTERNS = [
 ];
 
 /** Directories we never descend into: system/private dirs (macOS EPERM) and heavy ones. */
-const SKIP_DIRS = new Set([".Trash", "Library", "Applications", ".git", "node_modules"]);
+const SKIP_DIRS = new Set([".Trash", "Library", "Applications", ".git", "node_modules", "tmp", "temp", ".cache"]);
+const BACKUP_RE = /(?:^|[._-])(backup|bak|copy|old|tmp|temp)(?:[._-]|$)/i;
 
 const TTL_MS = 60_000;
 let cache: { at: number; result: SkillsResult } | null = null;
@@ -47,7 +52,7 @@ function resolveRoots(rootDir?: string): string[] {
 function listChildDirs(root: string): string[] {
   try {
     return readdirSync(root, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && !SKIP_DIRS.has(e.name))
+      .filter((e) => e.isDirectory() && !SKIP_DIRS.has(e.name) && !BACKUP_RE.test(e.name))
       .map((e) => path.join(root, e.name));
   } catch {
     return [];
@@ -61,7 +66,7 @@ function classify(
   const m = /^(.+?)[/\\](\.claude|\.agents)[/\\]skills[/\\]/.exec(mdPath);
   if (!m) return { agent: "opencode", scope: "project", projectRoot: path.dirname(mdPath) };
   const agent = m[2] === ".claude" ? "claude-code" : "opencode";
-  const projectRoot = m[1];
+  const projectRoot = m[1]!;
   const scope = path.resolve(projectRoot) === path.resolve(home) ? "global" : "project";
   return { agent, scope, projectRoot };
 }
@@ -78,7 +83,7 @@ export function parseSkillFrontmatter(text: string): { name?: string; descriptio
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
   if (!m) return {};
   const out: { name?: string; description?: string } = {};
-  for (const line of m[1].split("\n")) {
+  for (const line of m[1]!.split("\n")) {
     const kv = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/.exec(line);
     if (!kv) continue;
     const key = kv[1]!.toLowerCase();
@@ -88,11 +93,13 @@ export function parseSkillFrontmatter(text: string): { name?: string; descriptio
   return out;
 }
 
-function measureSkill(skillDir: string, mainName: string): { files: number; references: number; bytes: number } {
+function measureSkill(skillDir: string, mainName: string): { files: number; references: number; bytes: number; entryBytes: number; referenceBytes: number } {
   let files = 0;
   let references = 0;
   let bytes = 0;
+  let entryBytes = 0;
   for (const rel of readdirSync(skillDir, { recursive: true })) {
+    if (typeof rel !== "string") continue;
     const full = path.join(skillDir, rel);
     let st: ReturnType<typeof statSync>;
     try {
@@ -102,10 +109,10 @@ function measureSkill(skillDir: string, mainName: string): { files: number; refe
     }
     if (st.isDirectory()) continue;
     files++;
-    if (path.basename(full) !== mainName) references++;
+    if (path.basename(full) !== mainName) references++; else entryBytes += st.size;
     bytes += st.size;
   }
-  return { files, references, bytes };
+  return { files, references, bytes, entryBytes, referenceBytes: bytes - entryBytes };
 }
 
 async function inspectSkill(mdPath: string, home: string): Promise<SkillInfo | null> {
@@ -114,7 +121,7 @@ async function inspectSkill(mdPath: string, home: string): Promise<SkillInfo | n
     const fm = parseSkillFrontmatter(md);
     const skillDir = path.dirname(mdPath);
     const { agent, scope, projectRoot } = classify(mdPath, home);
-    const { files, references, bytes } = measureSkill(skillDir, path.basename(mdPath));
+    const { files, references, bytes, entryBytes, referenceBytes } = measureSkill(skillDir, path.basename(mdPath));
     return {
       name: fm.name || path.basename(skillDir),
       description: fm.description || null,
@@ -126,7 +133,7 @@ async function inspectSkill(mdPath: string, home: string): Promise<SkillInfo | n
       files,
       references,
       bytes,
-      estTokens: Math.round(bytes / 4),
+      estTokens: Math.round(entryBytes / 4), entryBytes, referenceBytes, installationCount: 1,
     };
   } catch {
     return null;
@@ -147,7 +154,7 @@ export async function getSkills(rootDir?: string): Promise<SkillsResult> {
           for await (const rel of glob.scan({ cwd: child, dot: true, onlyFiles: true })) {
             const mdPath = path.join(child, rel);
             const skillDir = path.dirname(mdPath);
-            if (seen.has(skillDir)) continue;
+            if (seen.has(skillDir) || BACKUP_RE.test(skillDir)) continue;
             const info = await inspectSkill(mdPath, home);
             if (info) seen.set(skillDir, info);
           }
@@ -157,8 +164,16 @@ export async function getSkills(rootDir?: string): Promise<SkillsResult> {
       }
     }
   }
-  const skills = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
-  const result: SkillsResult = { roots, skills, scannedAt: now };
+  const installations = seen.size;
+  const unique = new Map<string, SkillInfo>();
+  for (const skill of seen.values()) {
+    const key = `${skill.name.toLowerCase()}\0${skill.description ?? ""}`;
+    const prior = unique.get(key);
+    if (prior) prior.installationCount += 1;
+    else unique.set(key, skill);
+  }
+  const skills = [...unique.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const result: SkillsResult = { roots, skills, installations, scannedAt: now };
   cache = { at: now, result };
   return result;
 }

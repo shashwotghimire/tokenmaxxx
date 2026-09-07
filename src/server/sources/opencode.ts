@@ -9,6 +9,8 @@ import {
   type UsageEvent,
   type UsageSource,
 } from "./types";
+import { normalizeModel } from "../../shared/models";
+import { projectLabel, sanitizeTitle } from "../../shared/privacy";
 
 const DEFAULT_DB = path.join(homedir(), ".local", "share", "opencode", "opencode.db");
 
@@ -53,15 +55,18 @@ export function parseMessageData(raw: string): UsageEvent | null {
   if (total <= 0) return null;
   const ts = data.time?.created;
   if (typeof ts !== "number" || Number.isNaN(ts)) return null;
+  const normalized = normalizeModel(data.modelID);
   return {
     agent: AGENTS.OPENCODE,
-    model: String(data.modelID ?? "unknown"),
+    model: normalized.model, rawModel: normalized.rawModel,
     timestamp: ts,
     inputTokens: tokens.input ?? 0,
     outputTokens: tokens.output ?? 0,
     cacheWriteTokens: tokens.cache?.write ?? 0,
     cacheReadTokens: tokens.cache?.read ?? 0,
     reasoningTokens: tokens.reasoning ?? 0,
+    sourceEventId: data.id ? String(data.id) : undefined,
+    sessionId: data.sessionID ? String(data.sessionID) : undefined,
   };
 }
 
@@ -85,7 +90,7 @@ export function sessionFromRow(row: SessionRow): SessionInfo {
   return {
     agent: AGENTS.OPENCODE,
     sessionId: row.id,
-    title: row.title ?? null,
+    title: sanitizeTitle(row.title),
     model: modelId(row.model),
     cwd: row.directory ?? row.path ?? null,
     gitBranch: null,
@@ -162,7 +167,7 @@ export function createOpencodeSource(): UsageSource {
           for (const row of rows) {
             if (row.rowid > lastRowId) lastRowId = row.rowid;
             const event = parseMessageData(row.data);
-            if (event) onEvent(event);
+            if (event) onEvent({ ...event, sourceEventId: event.sourceEventId ?? `row:${row.rowid}` });
           }
           tickSessions();
         } catch (e) {

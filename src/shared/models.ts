@@ -1,0 +1,2 @@
+const VERIFIED_ALIASES: Record<string, string> = { "claude-sonnet-4.6": "claude-sonnet-4-6", "claude-opus-4.6": "claude-opus-4-6", "claude-haiku-4.5": "claude-haiku-4-5-20251001" };
+export function normalizeModel(raw: unknown): { model: string; rawModel: string } { const rawModel = String(raw ?? "unknown").trim().toLowerCase() || "unknown"; return { rawModel, model: VERIFIED_ALIASES[rawModel] ?? rawModel }; }

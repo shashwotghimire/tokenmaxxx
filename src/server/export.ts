@@ -1,4 +1,5 @@
 import type { SessionInfo, UsageEvent } from "./sources/types";
+import { redactPath, redactSecrets, sanitizeTitle } from "../shared/privacy";
 
 export function csvField(v: unknown): string {
   if (v === null || v === undefined) return "";
@@ -32,7 +33,7 @@ export function eventsToCsv(events: (UsageEvent & { cost: number })[]): string {
     ],
     events.map((e) => [
       e.agent,
-      e.model,
+      redactSecrets(e.model),
       iso(e.timestamp),
       e.inputTokens,
       e.outputTokens,
@@ -66,9 +67,9 @@ export function sessionsToCsv(sessions: SessionInfo[]): string {
     sessions.map((s) => [
       s.agent,
       s.sessionId,
-      s.title,
-      s.model,
-      s.cwd,
+      sanitizeTitle(s.title),
+      redactSecrets(s.model),
+      redactPath(s.cwd),
       s.gitBranch,
       s.tokens,
       s.cost,

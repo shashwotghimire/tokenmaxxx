@@ -1,9 +1,13 @@
 import type { Breakdown, SessionInfo, UsageEvent } from "./types";
+import { dateKey, hourKey, todayRange, validTimeZone } from "../../shared/time";
 
 export interface QueryOpts {
   agent?: string;
   since?: number;
   until?: number;
+  model?: string;
+  project?: string;
+  timeZone?: string;
 }
 
 const DAY_MS = 86_400_000;
@@ -31,6 +35,8 @@ export function filterEvents(evts: UsageEvent[], opts: QueryOpts): UsageEvent[] 
   return evts.filter(
     (e) =>
       (!opts.agent || e.agent === opts.agent) &&
+      (!opts.model || e.model === opts.model) &&
+      (!opts.project || (e as UsageEvent & { project?: string }).project === opts.project) &&
       (opts.since === undefined || e.timestamp >= opts.since) &&
       (opts.until === undefined || e.timestamp < opts.until)
   );
@@ -71,8 +77,8 @@ function addTo(a: Breakdown, b: Breakdown): Breakdown {
 }
 
 export function aggregateSummary(evts: UsageEvent[], opts: QueryOpts = {}) {
-  const start = startOfToday();
-  const today = toBreakdown(filterEvents(evts, { ...opts, since: start, until: start + DAY_MS }));
+  const range = todayRange(validTimeZone(opts.timeZone));
+  const today = toBreakdown(filterEvents(evts, { ...opts, since: range.since, until: range.until }));
   const allTime = toBreakdown(filterEvents(evts, { agent: opts.agent }));
   return { today, allTime, now: Date.now() };
 }
@@ -86,7 +92,7 @@ export function aggregateDaily(
   const until = opts.until ?? Date.now() + DAY_MS;
   const map = new Map<string, Breakdown>();
   for (const e of filterEvents(evts, { ...opts, since, until })) {
-    const date = fmtLocalDate(e.timestamp);
+    const date = dateKey(e.timestamp, validTimeZone(opts.timeZone));
     map.set(date, addTo(map.get(date) ?? zeroBreakdown(), toBreakdown([e])));
   }
   return [...map.entries()]
@@ -102,7 +108,7 @@ export function aggregateHourly(
   const until = opts.until;
   const map = new Map<string, Breakdown>();
   for (const e of filterEvents(evts, { ...opts, since, until })) {
-    const hour = fmtLocalHour(e.timestamp);
+    const hour = hourKey(e.timestamp, validTimeZone(opts.timeZone));
     map.set(hour, addTo(map.get(hour) ?? zeroBreakdown(), toBreakdown([e])));
   }
   return [...map.entries()]
@@ -160,7 +166,7 @@ export function aggregateContributions(
   const until = opts.until ?? Date.now() + DAY_MS;
   const map = new Map<string, { totalTokens: number; cost: number }>();
   for (const e of filterEvents(evts, { ...opts, since, until })) {
-    const date = fmtLocalDate(e.timestamp);
+    const date = dateKey(e.timestamp, validTimeZone(opts.timeZone));
     const cur = map.get(date) ?? { totalTokens: 0, cost: 0 };
     cur.totalTokens +=
       e.inputTokens + e.outputTokens + e.cacheWriteTokens + e.cacheReadTokens + e.reasoningTokens;

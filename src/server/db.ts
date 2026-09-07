@@ -69,4 +69,14 @@ function migrate(db: Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(time_updated);
   `);
+  const columns = db.query("PRAGMA table_info(usage_events)").all() as { name: string }[];
+  const names = new Set(columns.map((c) => c.name));
+  const add = (name: string, sql: string) => { if (!names.has(name)) db.exec(`ALTER TABLE usage_events ADD COLUMN ${sql}`); };
+  add("source_event_id", "source_event_id TEXT");
+  add("raw_model", "raw_model TEXT");
+  add("session_id", "session_id TEXT");
+  add("project", "project TEXT");
+  add("measurement_status", "measurement_status TEXT NOT NULL DEFAULT 'complete'");
+  add("cost_status", "cost_status TEXT NOT NULL DEFAULT 'unknown'");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_source_event ON usage_events(agent, source_event_id) WHERE source_event_id IS NOT NULL");
 }

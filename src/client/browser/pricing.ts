@@ -8,16 +8,14 @@ interface ModelPrice {
   cacheRead: number;
 }
 
-type PricingTable = Record<string, ModelPrice>;
-
-function priceForModel(model: string): ModelPrice {
-  const t = pricingTable as PricingTable;
-  return t[model] ?? t["default"]!;
+function priceForModel(model: string): ModelPrice | null {
+  return (pricingTable.models as Record<string, ModelPrice>)[model] ?? null;
 }
 
 /** Cost in USD for a normalized usage event. Rates are USD per 1M tokens. */
 export function costForEvent(event: Omit<UsageEvent, "cost">): number {
   const p = priceForModel(event.model);
+  if (!p) return 0;
   const perMillion = 1_000_000;
   return (
     (event.inputTokens * p.input +

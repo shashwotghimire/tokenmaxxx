@@ -10,6 +10,8 @@ import {
   type UsageSource,
 } from "./types";
 import { FileTailer } from "./tailer";
+import { normalizeModel } from "../../shared/models";
+import { projectLabel, sanitizeTitle } from "../../shared/privacy";
 
 const DEFAULT_ROOT = path.join(homedir(), ".claude", "projects");
 
@@ -37,15 +39,20 @@ export function usageEventFromJson(json: any): UsageEvent | null {
   if (!usage) return null;
   const ts = Date.parse(json.timestamp);
   if (Number.isNaN(ts)) return null;
+  const normalized = normalizeModel(msg.model);
   return {
     agent: AGENTS.CLAUDE_CODE,
-    model: String(msg.model ?? "unknown"),
+    model: normalized.model,
+    rawModel: normalized.rawModel,
     timestamp: ts,
     inputTokens: usage.input_tokens ?? 0,
     outputTokens: usage.output_tokens ?? 0,
     cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
     cacheReadTokens: usage.cache_read_input_tokens ?? 0,
     reasoningTokens: 0,
+    sourceEventId: json.uuid ? String(json.uuid) : undefined,
+    sessionId: json.sessionId ?? json.session_id,
+    project: json.cwd ? projectLabel(json.cwd) : undefined,
   };
 }
 
@@ -112,7 +119,8 @@ export class SessionTracker {
 
     if (json.sessionId) this.state.sessionId = String(json.sessionId);
     else if (json.session_id) this.state.sessionId = String(json.session_id);
-    if (json.type === "ai-title" && json.aiTitle) this.state.title = String(json.aiTitle);
+    if (json.type === "ai-title" && json.aiTitle) this.state.title = sanitizeTitle(json.aiTitle);
+    if (!this.state.title && json.type === "user" && typeof json.message?.content === "string") this.state.title = sanitizeTitle(json.message.content);
     if (json.message?.model) this.state.model = String(json.message.model);
     if (json.cwd) this.state.cwd = String(json.cwd);
     if (json.gitBranch) this.state.gitBranch = String(json.gitBranch);
@@ -130,7 +138,7 @@ export class SessionTracker {
       this.state.cacheWriteTokens += event.cacheWriteTokens;
       this.state.cacheReadTokens += event.cacheReadTokens;
       this.state.reasoningTokens += event.reasoningTokens;
-      this.state.cost += costForEvent(event);
+      this.state.cost += costForEvent(event) ?? 0;
       return event;
     }
     return null;

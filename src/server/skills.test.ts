@@ -58,7 +58,9 @@ body`);
   expect(hallmark.agent).toBe("opencode");
   expect(hallmark.description).toBe("no quotes needed");
   const skMd = "---\nname: hallmark\ndescription: no quotes needed\n---\nbody";
-  expect(hallmark.estTokens).toBe(Math.round((skMd.length + 400) / 4));
+  expect(hallmark.estTokens).toBe(Math.round(skMd.length / 4));
+  expect(hallmark.entryBytes).toBe(skMd.length);
+  expect(hallmark.referenceBytes).toBe(400);
 });
 
 test("getSkills falls back to the folder name when there is no frontmatter", async () => {

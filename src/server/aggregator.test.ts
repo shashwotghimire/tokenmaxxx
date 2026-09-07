@@ -15,6 +15,7 @@ const {
   getAgentBreakdown,
   getContributionGraph,
   getStats,
+  getAllEvents,
   computeStreaks,
 } = await import("./aggregator");
 import type { UsageEvent } from "./sources/types";
@@ -104,6 +105,12 @@ test("contribution graph returns per-day totals", () => {
 test("agent filter narrows results", () => {
   const s = getSummary({ agent: "opencode" });
   expect(s.allTime.inputTokens).toBe(1000);
+});
+
+test("stable source identity prevents duplicate imports and reconnects", () => {
+  const e = ev({ timestamp: Date.now(), inputTokens: 0, sourceEventId: "synthetic:one" });
+  handleEvent(e); handleEvent(e);
+  expect(getAllEvents({}).filter((x) => x.sourceEventId === "synthetic:one")).toHaveLength(1);
 });
 
 test("stats computes streaks, top model, top agent", () => {

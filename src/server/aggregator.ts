@@ -1,5 +1,8 @@
 import { getDb } from "./db";
-import { costForEvent } from "./pricing";
+import { costForEvent, pricingMetadata } from "./pricing";
+import { normalizeModel } from "../shared/models";
+import { projectLabel, redactPath, sanitizeTitle } from "../shared/privacy";
+import { dateKey, hourKey, shiftDate, todayRange, validTimeZone, zonedDateTimeToEpoch } from "../shared/time";
 import type { SessionInfo, UsageEvent } from "./sources/types";
 
 export interface DateRange {
@@ -7,10 +10,14 @@ export interface DateRange {
   until?: number;
 }
 
-interface QueryOptions {
+export interface QueryOptions {
   agent?: string;
+  model?: string;
+  project?: string;
+  sessionId?: string;
   since?: number;
   until?: number;
+  timeZone?: string;
 }
 
 function buildWhere(opts: QueryOptions): { where: string; params: (string | number)[] } {
@@ -20,6 +27,9 @@ function buildWhere(opts: QueryOptions): { where: string; params: (string | numb
     clauses.push("agent = ?");
     params.push(opts.agent);
   }
+  if (opts.model) { clauses.push("model = ?"); params.push(normalizeModel(opts.model).model); }
+  if (opts.project) { clauses.push("project = ?"); params.push(opts.project); }
+  if (opts.sessionId) { clauses.push("session_id = ?"); params.push(opts.sessionId); }
   if (opts.since !== undefined) {
     clauses.push("timestamp >= ?");
     params.push(opts.since);
@@ -32,9 +42,12 @@ function buildWhere(opts: QueryOptions): { where: string; params: (string | numb
 }
 
 export function handleEvent(event: UsageEvent): UsageEvent & { cost: number } {
-  const cost = costForEvent(event);
+  const normalized = normalizeModel(event.model);
+  event = { ...event, model: normalized.model, rawModel: event.rawModel ?? normalized.rawModel };
+  const priced = costForEvent(event);
+  const cost = priced ?? 0;
   const db = getDb();
-  const existing = db
+  const existing = event.sourceEventId ? db.query("SELECT id FROM usage_events WHERE agent = ? AND source_event_id = ? LIMIT 1").get(event.agent, event.sourceEventId) : db
     .query(
       `SELECT id FROM usage_events
        WHERE agent = ? AND model = ? AND timestamp = ?
@@ -58,8 +71,9 @@ export function handleEvent(event: UsageEvent): UsageEvent & { cost: number } {
   }
   db.query(
     `INSERT INTO usage_events
-        (agent, model, timestamp, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, reasoning_tokens, cost)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (agent, model, timestamp, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, reasoning_tokens, cost,
+         source_event_id, raw_model, session_id, project, measurement_status, cost_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     event.agent,
     event.model,
@@ -69,12 +83,19 @@ export function handleEvent(event: UsageEvent): UsageEvent & { cost: number } {
     event.cacheWriteTokens,
     event.cacheReadTokens,
     event.reasoningTokens,
-    cost
+    cost, event.sourceEventId ?? null, event.rawModel ?? event.model, event.sessionId ?? null,
+    event.project ?? null, event.measurementStatus ?? "complete", priced === null ? "unknown" : priced === 0 ? "free" : "estimated"
   );
   return { ...event, cost };
 }
 
 export function handleSession(session: SessionInfo): SessionInfo {
+  session = {
+    ...session,
+    title: sanitizeTitle(session.title),
+    cwd: session.cwd ? String(session.cwd) : null,
+    model: session.model ? normalizeModel(session.model).model : null,
+  };
   getDb()
     .query(
       `INSERT INTO sessions
@@ -151,7 +172,7 @@ export function getSessions(opts: QueryOptions & { limit?: number }): SessionInf
   return rows.map((r) => ({
     agent: r.agent as SessionInfo["agent"],
     sessionId: r.session_id,
-    title: r.title,
+    title: sanitizeTitle(r.title),
     model: r.model,
     cwd: r.cwd,
     gitBranch: r.git_branch,
@@ -164,6 +185,8 @@ export function getSessions(opts: QueryOptions & { limit?: number }): SessionInf
     reasoningTokens: r.reasoning_tokens,
     timeCreated: r.time_created,
     timeUpdated: r.time_updated,
+    measurementStatus: r.agent === "codex" ? "partial" : "complete",
+    measurementNote: r.agent === "codex" ? "Codex exposes only a cumulative per-thread total; output and cache categories are unavailable." : null,
   }));
 }
 
@@ -173,7 +196,8 @@ export function getAllEvents(opts: QueryOptions & { limit?: number }): (UsageEve
   const rows = getDb()
     .query(
       `SELECT agent, model, timestamp, input_tokens, output_tokens,
-              cache_write_tokens, cache_read_tokens, reasoning_tokens, cost
+              cache_write_tokens, cache_read_tokens, reasoning_tokens, cost,
+              source_event_id, raw_model, session_id, project, measurement_status
        FROM usage_events ${where}
        ORDER BY timestamp DESC
        LIMIT ${limit}`
@@ -188,6 +212,7 @@ export function getAllEvents(opts: QueryOptions & { limit?: number }): (UsageEve
     cache_read_tokens: number;
     reasoning_tokens: number;
     cost: number;
+    source_event_id: string | null; raw_model: string | null; session_id: string | null; project: string | null; measurement_status: "complete" | "partial";
   }[];
   return rows.map((r) => ({
     agent: r.agent as UsageEvent["agent"],
@@ -199,6 +224,8 @@ export function getAllEvents(opts: QueryOptions & { limit?: number }): (UsageEve
     cacheReadTokens: r.cache_read_tokens,
     reasoningTokens: r.reasoning_tokens,
     cost: r.cost,
+    sourceEventId: r.source_event_id ?? undefined, rawModel: r.raw_model ?? undefined,
+    sessionId: r.session_id ?? undefined, project: r.project ?? undefined, measurementStatus: r.measurement_status,
   }));
 }
 
@@ -260,57 +287,32 @@ function toBreakdown(row: TotalsRow) {
 }
 
 export function getSummary(opts: QueryOptions = {}) {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfTomorrow = startOfDay + 86_400_000;
-  const today = toBreakdown(totalsQuery({ ...opts, since: startOfDay, until: startOfTomorrow }));
+  const timeZone = validTimeZone(opts.timeZone);
+  const { since, until } = todayRange(timeZone);
+  const today = toBreakdown(totalsQuery({ ...opts, since, until }));
   const allTime = toBreakdown(totalsQuery({ agent: opts.agent }));
-  return { today, allTime, now: Date.now() };
+  return { today, allTime, now: Date.now(), range: { since, until, timeZone }, pricing: pricingMetadata() };
 }
 
 export function getDaily(opts: QueryOptions & { days?: number }): { date: string; totals: ReturnType<typeof toBreakdown> }[] {
+  const timeZone = validTimeZone(opts.timeZone);
   const days = opts.days ?? 7;
-  const since = opts.since ?? startOfDayOffset(days);
-  const until = opts.until ?? Date.now() + 86_400_000;
-  const { where, params } = buildWhere({ ...opts, since, until });
-  const rows = getDb()
-    .query(
-      `SELECT
-        date(timestamp / 1000, 'unixepoch', 'localtime') as date,
-        COALESCE(SUM(input_tokens), 0) as input_tokens,
-        COALESCE(SUM(output_tokens), 0) as output_tokens,
-        COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
-        COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
-        COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
-        COALESCE(SUM(cost), 0) as cost
-       FROM usage_events ${where}
-       GROUP BY date
-       ORDER BY date ASC`
-    )
-    .all(...params) as ({ date: string } & TotalsRow)[];
-  return rows.map((r) => ({ date: r.date, totals: toBreakdown(r) }));
+  const today = dateKey(Date.now(), timeZone);
+  const since = opts.since ?? todayRange(timeZone, Date.parse(`${shiftDate(today, -(days - 1))}T12:00:00Z`)).since;
+  const until = opts.until ?? todayRange(timeZone).until;
+  const map = new Map<string, TotalsRow>();
+  for (const e of getAllEvents({ ...opts, since, until, limit: 1_000_000 })) {
+    const key = dateKey(e.timestamp, timeZone); const row = map.get(key) ?? { input_tokens: 0, output_tokens: 0, cache_write_tokens: 0, cache_read_tokens: 0, reasoning_tokens: 0, cost: 0 };
+    row.input_tokens += e.inputTokens; row.output_tokens += e.outputTokens; row.cache_write_tokens += e.cacheWriteTokens; row.cache_read_tokens += e.cacheReadTokens; row.reasoning_tokens += e.reasoningTokens; row.cost += e.cost; map.set(key, row);
+  }
+  return [...map].sort(([a], [b]) => a.localeCompare(b)).map(([date, row]) => ({ date, totals: toBreakdown(row) }));
 }
 
 export function getHourly(opts: QueryOptions & { date?: string; days?: number }): { hour: string; totals: ReturnType<typeof toBreakdown> }[] {
-  const since = opts.since;
-  const until = opts.until;
-  const { where, params } = buildWhere({ ...opts, since, until });
-  const rows = getDb()
-    .query(
-      `SELECT
-        strftime('%Y-%m-%d %H:00', timestamp / 1000, 'unixepoch', 'localtime') as hour,
-        COALESCE(SUM(input_tokens), 0) as input_tokens,
-        COALESCE(SUM(output_tokens), 0) as output_tokens,
-        COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
-        COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
-        COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
-        COALESCE(SUM(cost), 0) as cost
-       FROM usage_events ${where}
-       GROUP BY hour
-       ORDER BY hour ASC`
-    )
-    .all(...params) as ({ hour: string } & TotalsRow)[];
-  return rows.map((r) => ({ hour: r.hour, totals: toBreakdown(r) }));
+  const timeZone = validTimeZone(opts.timeZone); const range = opts.date ? todayRange(timeZone, zonedDateTimeToEpoch(opts.date, timeZone)) : todayRange(timeZone);
+  const since = opts.since ?? range.since; const until = opts.until ?? range.until; const map = new Map<string, TotalsRow>();
+  for (const e of getAllEvents({ ...opts, since, until, limit: 1_000_000 })) { const key = hourKey(e.timestamp, timeZone); const row = map.get(key) ?? { input_tokens: 0, output_tokens: 0, cache_write_tokens: 0, cache_read_tokens: 0, reasoning_tokens: 0, cost: 0 }; row.input_tokens += e.inputTokens; row.output_tokens += e.outputTokens; row.cache_write_tokens += e.cacheWriteTokens; row.cache_read_tokens += e.cacheReadTokens; row.reasoning_tokens += e.reasoningTokens; row.cost += e.cost; map.set(key, row); }
+  return [...map].sort(([a], [b]) => a.localeCompare(b)).map(([hour, row]) => ({ hour, totals: toBreakdown(row) }));
 }
 
 export function getModelBreakdown(opts: QueryOptions): { model: string; agent: string; totals: ReturnType<typeof toBreakdown> }[] {

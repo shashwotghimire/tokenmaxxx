@@ -30,7 +30,7 @@ describe("parseClaudeFile", () => {
     expect(events[0]!.inputTokens).toBe(100);
     expect(events[0]!.outputTokens).toBe(50);
     expect(events[0]!.cacheReadTokens).toBe(10);
-    expect(events[0]!.cost).toBeGreaterThan(0);
+    expect(events[0]!.cost).toBe(0); // unknown model is deliberately unpriced
     expect(session.sessionId).toBe("s1");
     expect(session.title).toBe("Fix bug");
     expect(session.cwd).toBe("/repo");
@@ -64,7 +64,7 @@ describe("sqlite readers", () => {
              CREATE TABLE session (id TEXT PRIMARY KEY, title TEXT, model TEXT, agent TEXT, directory TEXT, path TEXT, cost REAL,
               tokens_input INTEGER, tokens_output INTEGER, tokens_reasoning INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER,
               time_created INTEGER, time_updated INTEGER);`);
-    db.run("INSERT INTO message (time_created, data) VALUES (1780000000000, ?)", JSON.stringify({ role: "assistant", modelID: "claude-3-7", time: { created: 1780000000000 }, tokens: { input: 100, output: 40, total: 140 } }));
+    db.run("INSERT INTO message (time_created, data) VALUES (1780000000000, ?)", [JSON.stringify({ role: "assistant", modelID: "claude-3-7", time: { created: 1780000000000 }, tokens: { input: 100, output: 40, total: 140 } })]);
     db.run("INSERT INTO session (id, title, model, tokens_input, tokens_output, cost, time_updated) VALUES ('op1', 'Demo', '{\"id\":\"claude-3-7\"}', 100, 40, 0.01, 1780000000000)");
     db.close();
     return p;
@@ -110,7 +110,7 @@ describe("aggregation", () => {
   ];
 
   test("aggregateDaily groups by local date", () => {
-    const rows = aggregateDaily(evts, {});
+    const rows = aggregateDaily(evts, { since: base - 1, until: base + 2 * 3600_000 });
     expect(rows).toHaveLength(1);
     expect(rows[0]!.date).toBe(fmtLocalDate(base));
     expect(rows[0]!.totals.totalTokens).toBe(228);
