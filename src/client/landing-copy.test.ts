@@ -11,6 +11,8 @@ describe("landing-page copy", () => {
     expect(copy).toContain("See what your AI coding tools cost.");
     expect(copy).toContain("Set it up");
     expect(copy).toContain("Your files stay on the machine you choose.");
+    expect(copy).not.toContain('href="/dashboard"');
+    expect(copy).not.toContain('id: "dashboard"');
   });
 
   test("does not sell source access, price, or vague product language as features", () => {
