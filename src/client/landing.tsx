@@ -15,38 +15,38 @@ const AGENTS: { name: string; tag: string; brand: BrandKind }[] = [
 
 const FEATURES = [
   {
-    title: "Trace spend to work",
-    body: "Move from current-period spend to project, model, agent, session, and expensive-event detail without losing the selected range.",
+    title: "Break down your usage",
+    body: "Filter tokens and estimated cost by date, project, model, coding tool, or session. Open a session to find the events that cost the most.",
   },
   {
-    title: "Catch incomplete data",
-    body: "Unknown pricing, partial provider measurements, stale sources, and duplicate-resistant imports are stated instead of disguised as zero.",
+    title: "Know when data is incomplete",
+    body: "If a model has no price, a source stops updating, or a provider reports only part of its usage, tokenmaxxx tells you instead of showing a misleading zero.",
   },
   {
-    title: "Plan with guardrails",
-    body: "Period comparisons, budgets, cache efficiency, and forecast intervals show assumptions and insufficient-data states.",
+    title: "Set a budget and compare periods",
+    body: "Set daily or monthly limits, compare one period with another, check cache use, and see a 30-day forecast when there is enough history.",
   },
   {
-    title: "Screenshot safely",
-    body: "Privacy mode obscures titles and paths, while exports redact credentials and reduce working directories to project labels.",
+    title: "Share without exposing private details",
+    body: "Privacy mode hides titles and paths in screenshots. Exports remove credentials and shorten working-directory paths to project names.",
   },
 ];
 
 const STEPS = [
   {
     n: "01",
-    title: "Keep coding",
-    body: "Use Claude Code, OpenCode, or Codex CLI exactly as you always do.",
+    title: "Run tokenmaxxx",
+    body: "Start it with Docker or Bun on the machine where your coding tools save their logs.",
   },
   {
     n: "02",
-    title: "tokenmaxxx watches",
-    body: "It tails the agents' native logs and databases automatically — zero configuration.",
+    title: "Give it read-only access",
+    body: "Mount or select the Claude Code, OpenCode, and Codex CLI files you want it to read.",
   },
   {
     n: "03",
-    title: "See everything",
-    body: "Live totals, per-session detail, and forecasts land in your browser in real time.",
+    title: "Open the dashboard",
+    body: "See usage by day, model, project, and session. New records appear while tokenmaxxx is running.",
   },
 ];
 
@@ -306,16 +306,17 @@ export function Landing() {
       <header className="l-hero">
         <div className="l-wrap l-hero-inner">
           <div className="l-hero-copy">
-            <p className="l-kicker">self-hosted telemetry for AI coding agents</p>
-            <h1>Know every token you spend.</h1>
+            <p className="l-kicker">token and cost tracking for AI coding tools</p>
+            <h1>See what your AI coding tools cost.</h1>
             <p className="l-sub">
-              Runs on your machine and reads the logs Claude Code, OpenCode, and Codex CLI already
-              keep. Counts tokens and cost live, slices them by model and day, and forecasts the
-              next 30 days. Choose browser-local parsing or a self-hosted server; every view states which mode produced it.
+              tokenmaxxx reads the usage files already saved by Claude Code, OpenCode, and Codex
+              CLI. It shows tokens and estimated cost by day, model, project, and session, so you
+              can see where the money goes. Load files in your browser or run tokenmaxxx on your
+              own machine.
             </p>
             <div className="l-cta">
               <a className="l-btn l-btn-primary l-btn-lg" href="#install">
-                Try it
+                Set it up
               </a>
               <a
                 className="l-btn l-btn-ghost l-btn-lg"
@@ -323,7 +324,7 @@ export function Landing() {
                 target="_blank"
                 rel="noreferrer"
               >
-                View on GitHub ↗
+                See the code on GitHub ↗
               </a>
             </div>
           </div>
@@ -331,8 +332,8 @@ export function Landing() {
           <figure className="l-panel">
             <figcaption className="l-panel-meta">
               <span className="l-dot" aria-hidden="true" />
-              live · claude-code · opus
-              <span className="l-panel-sample">sample</span>
+              example · claude-code · opus
+              <span className="l-panel-sample">sample data</span>
             </figcaption>
             <div className="l-panel-body">
               <div className="l-panel-stats">
@@ -365,7 +366,7 @@ export function Landing() {
 
       <section className="l-agents" id="agents">
         <div className="l-wrap">
-          <p className="l-kicker l-kicker-center">works with</p>
+          <p className="l-kicker l-kicker-center">reads usage from</p>
           <div className="l-agent-row">
             {AGENTS.map((a) => (
               <div className="l-agent" key={a.name}>
@@ -380,10 +381,10 @@ export function Landing() {
 
       <section className="l-mode-strip" aria-labelledby="mode-heading">
         <div className="l-wrap l-mode-grid">
-          <div><p className="l-kicker">two local-first modes</p><h2 id="mode-heading" className="l-h2">Know where the data is read.</h2></div>
+          <div><p className="l-kicker">choose how it reads your data</p><h2 id="mode-heading" className="l-h2">Your files stay on the machine you choose.</h2></div>
           <dl className="l-mode-list">
-            <div><dt>Browser-local</dt><dd>You choose log files; parsing happens in that browser tab. Nothing is sent to the tokenmaxxx server. File permission and rescans depend on the browser.</dd></div>
-            <div><dt>Self-hosted server</dt><dd>The server reads mounted or configured paths on its own machine and streams updates to connected tabs. “Live” requires both watcher and tab to remain running.</dd></div>
+            <div><dt>In your browser</dt><dd>Choose the log files yourself. tokenmaxxx reads them in that tab and does not upload them. You may need to choose the files again in a new browser session.</dd></div>
+            <div><dt>On your machine</dt><dd>Run tokenmaxxx on your computer or server and point it at the log files. It watches for changes and updates the dashboard while it is running.</dd></div>
           </dl>
         </div>
       </section>
@@ -391,8 +392,8 @@ export function Landing() {
       <section className="l-section" id="features">
         <div className="l-wrap">
           <Reveal>
-            <p className="l-kicker">features</p>
-            <h2 className="l-h2">Everything you need to rein in your spend</h2>
+            <p className="l-kicker">what you can see</p>
+            <h2 className="l-h2">See where your tokens go and what they cost.</h2>
             <div className="l-spec">
               {FEATURES.map((f, i) => (
                 <div className="l-spec-row" key={f.title}>
@@ -409,7 +410,7 @@ export function Landing() {
         <div className="l-wrap">
           <Reveal>
             <p className="l-kicker">how it works</p>
-            <h2 className="l-h2">Zero config. Just run it.</h2>
+            <h2 className="l-h2">Point it at your logs. Then keep coding.</h2>
             <div className="l-steps">
               {STEPS.map((s, i) => (
                 <div className="l-step" key={s.n}>
@@ -429,11 +430,11 @@ export function Landing() {
       <section className="l-band" id="install">
         <div className="l-wrap">
           <Reveal>
-            <p className="l-kicker l-kicker-on">install</p>
-            <h2 className="l-h2 l-h2-on">Self-host it in minutes</h2>
+            <p className="l-kicker l-kicker-on">run tokenmaxxx</p>
+            <h2 className="l-h2 l-h2-on">Start with Docker</h2>
             <p className="l-sub l-sub-on">
-              One command. tokenmaxxx reads read-only mounted agent data on the machine running
-              the container and serves the dashboard on your configured host.
+              Copy the command for your system. It reads the default log folders without changing
+              them and stores tokenmaxxx data in a Docker volume.
             </p>
             <div className="l-os-tabs" role="tablist" aria-label="Installation platform">
               {(
@@ -461,8 +462,8 @@ export function Landing() {
               <CopyButton text={INSTALL[os]!} />
             </div>
             <p className="l-sub l-sub-small l-sub-on">
-              Then open <code>http://localhost:3000/dashboard</code>. Or run it directly with
-              <code> bun start</code> if you already have Bun.
+              When the container starts, open <code>http://localhost:3000/dashboard</code>. If you
+              cloned the repository and already have Bun, use <code>bun start</code> instead.
             </p>
             <div className="l-cta">
               <a
@@ -471,10 +472,10 @@ export function Landing() {
                 target="_blank"
                 rel="noreferrer"
               >
-                Get it on GitHub ↗
+                View setup on GitHub ↗
               </a>
               <a className="l-btn l-btn-ghost l-btn-lg l-btn-ghost-on" href="#features">
-                See features
+                See what it tracks
               </a>
             </div>
           </Reveal>
@@ -486,7 +487,7 @@ export function Landing() {
           <a className="l-brand" href="/">
             tokenmaxxx
           </a>
-          <span className="l-footer-note">local-first · no accounts · no cloud</span>
+          <span className="l-footer-note">your logs stay on your machine</span>
           <div className="l-footer-links">
             <a href="#features">Features</a>
             <a href="#install">Install</a>
