@@ -14,11 +14,15 @@ interface Skill {
   references: number;
   bytes: number;
   estTokens: number;
+  entryBytes: number;
+  referenceBytes: number;
+  installationCount: number;
 }
 
 interface SkillsResult {
   roots: string[];
   skills: Skill[];
+  installations: number;
   scannedAt: number;
 }
 
@@ -83,11 +87,11 @@ function SkillsTable({ data }: { data: SkillsResult }) {
       <section className="card">
         <div className="stat-grid">
           <div className="stat">
-            <div className="stat-label">skills found</div>
+            <div className="stat-label">unique skills</div>
             <div className="stat-value">{skills.length}</div>
           </div>
           <div className="stat">
-            <div className="stat-label">est. context tokens</div>
+            <div className="stat-label">entry-file token estimate</div>
             <div className="stat-value">{formatTokens(totalEstTokens)}</div>
           </div>
           <div className="stat">
@@ -100,8 +104,8 @@ function SkillsTable({ data }: { data: SkillsResult }) {
           </div>
         </div>
         <p className="muted table-count">
-          scanned {data.roots.length} root{data.roots.length === 1 ? "" : "s"}: {data.roots.join(", ")} — cache refreshes
-          every 60s
+          {data.installations} installation{data.installations === 1 ? "" : "s"} across {data.roots.length} scan root{data.roots.length === 1 ? "" : "s"}.
+          Entry-file estimates do not imply reference files load on every invocation. Cache refreshes every 60s.
         </p>
       </section>
 
@@ -129,7 +133,7 @@ function SkillsTable({ data }: { data: SkillsResult }) {
                 onClick={() => toggle("references")}
               />
               <SortTh
-                label="est. context tokens"
+                label="entry-file est. tokens"
                 active={sortKey === "estTokens"}
                 dir={sortDir}
                 onClick={() => toggle("estTokens")}
@@ -162,8 +166,8 @@ function SkillRow({ skill: s }: { skill: Skill }) {
         <span className={`badge badge-${s.agent}`}>{s.agent}</span>
       </td>
       <td>{s.files}</td>
-      <td>{s.references}</td>
-      <td className="strong">{formatTokens(s.estTokens)}</td>
+              <td>{s.references} · {formatTokens(s.referenceBytes)} bytes</td>
+              <td className="strong">{formatTokens(s.estTokens)}</td>
       <td className="muted skill-path">{s.path}</td>
     </tr>
   );

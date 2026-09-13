@@ -111,6 +111,8 @@ export function BreakdownTable({ refreshKey, kind }: Props) {
           {sorted.length} of {rows.length}
         </span>
       </div>
+      {sorted.length === 0 && <div className="empty-state"><p>No {nameKey}s match this search in the selected period.</p><button className="btn" onClick={() => setQuery("")}>Clear search</button></div>}
+      {query && <p className="muted table-count">Totals below are scoped to the {sorted.length} filtered row{sorted.length === 1 ? "" : "s"}.</p>}
       <table className="table">
         <thead>
           <tr>

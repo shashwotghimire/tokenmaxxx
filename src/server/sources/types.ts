@@ -16,6 +16,11 @@ export interface UsageEvent {
   cacheWriteTokens: number;
   cacheReadTokens: number;
   reasoningTokens: number;
+  sourceEventId?: string;
+  rawModel?: string;
+  sessionId?: string;
+  project?: string;
+  measurementStatus?: "complete" | "partial";
 }
 
 export interface StoredEvent extends UsageEvent {
@@ -38,6 +43,8 @@ export interface SessionInfo {
   reasoningTokens: number;
   timeCreated: number | null;
   timeUpdated: number | null;
+  measurementStatus?: "complete" | "partial";
+  measurementNote?: string | null;
 }
 
 export interface UsageSource {

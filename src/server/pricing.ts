@@ -2,33 +2,34 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { UsageEvent } from "./sources/types";
 
-interface ModelPrice {
+export interface ModelPrice {
   input: number;
   output: number;
   cacheWrite: number;
   cacheRead: number;
 }
 
-type PricingTable = Record<string, ModelPrice>;
+interface PricingFile { unit: string; version: string; currency: "USD"; source: string; models: Record<string, ModelPrice> }
 
-let table: PricingTable | null = null;
+let table: PricingFile | null = null;
 
-export function getPricingTable(): PricingTable {
+export function getPricingTable(): PricingFile {
   if (table) return table;
   const jsonPath = path.join(import.meta.dir, "..", "..", "pricing.json");
-  const raw = JSON.parse(readFileSync(jsonPath, "utf8")) as PricingTable;
+  const raw = JSON.parse(readFileSync(jsonPath, "utf8")) as PricingFile;
   table = raw;
   return table;
 }
 
-export function priceForModel(model: string): ModelPrice {
+export function priceForModel(model: string): ModelPrice | null {
   const t = getPricingTable();
-  return t[model] ?? t["default"]!;
+  return t.models[model] ?? null;
 }
 
 /** Cost in USD for a normalized usage event. Rates are USD per 1M tokens. */
-export function costForEvent(event: UsageEvent): number {
+export function costForEvent(event: UsageEvent): number | null {
   const p = priceForModel(event.model);
+  if (!p) return null;
   const perMillion = 1_000_000;
   return (
     (event.inputTokens * p.input +
@@ -38,3 +39,4 @@ export function costForEvent(event: UsageEvent): number {
     perMillion
   );
 }
+export function pricingMetadata() { const { unit, version, currency, source } = getPricingTable(); return { unit, version, currency, source, methodology: "API-equivalent estimate; not a billed amount" }; }

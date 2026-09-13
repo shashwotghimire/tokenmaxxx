@@ -1,6 +1,8 @@
 import initSqlJs from "sql.js";
 import { costForEvent } from "./pricing";
 import type { AgentId, SessionInfo, UsageEvent } from "./types";
+import { normalizeModel } from "../../shared/models";
+import { projectLabel, sanitizeTitle } from "../../shared/privacy";
 
 export const WASM_URL = "/assets/sql-wasm.wasm";
 
@@ -19,15 +21,19 @@ export function usageEventFromJson(json: any): RawEvent | null {
   if (!usage) return null;
   const ts = Date.parse(json.timestamp);
   if (Number.isNaN(ts)) return null;
+  const normalized = normalizeModel(msg.model);
   return {
     agent: "claude-code" as AgentId,
-    model: String(msg.model ?? "unknown"),
+    model: normalized.model, rawModel: normalized.rawModel,
     timestamp: ts,
     inputTokens: usage.input_tokens ?? 0,
     outputTokens: usage.output_tokens ?? 0,
     cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
     cacheReadTokens: usage.cache_read_input_tokens ?? 0,
     reasoningTokens: 0,
+    sourceEventId: json.uuid ? String(json.uuid) : undefined,
+    sessionId: json.sessionId ?? json.session_id,
+    project: json.cwd ? projectLabel(json.cwd) : undefined,
   };
 }
 
@@ -65,7 +71,8 @@ export function parseClaudeFile(name: string, text: string): { events: UsageEven
     }
     if (json.sessionId) sessionId = String(json.sessionId);
     else if (json.session_id) sessionId = String(json.session_id);
-    if (json.type === "ai-title" && json.aiTitle) state.title = String(json.aiTitle);
+    if (json.type === "ai-title" && json.aiTitle) state.title = sanitizeTitle(json.aiTitle);
+    if (!state.title && json.type === "user" && typeof json.message?.content === "string") state.title = sanitizeTitle(json.message.content);
     if (json.message?.model) state.model = String(json.message.model);
     if (json.cwd) state.cwd = String(json.cwd);
     if (json.gitBranch) state.gitBranch = String(json.gitBranch);

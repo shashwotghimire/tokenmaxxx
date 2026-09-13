@@ -35,6 +35,8 @@ export interface ForecastResult {
   history: { date: string; totalTokens: number; cost: number }[];
   forecast: ForecastPoint[];
   cumulative: { tokens: number; cost: number; low: number; high: number };
+  scenario: "baseline" | "workdays" | "quiet" | "busy";
+  backtest: { status: "insufficient-data"; note: string };
 }
 
 function clamp(v: number, min: number, max: number): number {
@@ -143,10 +145,11 @@ interface DayPoint {
 export function buildForecastFromEvents(
   evts: UsageEvent[],
   agent: string | undefined,
-  opts: { horizon?: number; windowDays?: number } = {}
+  opts: { horizon?: number; windowDays?: number; scenario?: "baseline" | "workdays" | "quiet" | "busy" } = {}
 ): ForecastResult {
   const horizon = clamp(Math.round(opts.horizon ?? 7), 1, 30);
   const windowDays = clamp(Math.round(opts.windowDays ?? 42), 7, 120);
+  const scenario = opts.scenario ?? "baseline";
 
   const filtered = agent ? evts.filter((e) => e.agent === agent) : evts;
   const series: DayPoint[] = [];
@@ -194,6 +197,7 @@ export function buildForecastFromEvents(
     history: series.map((s) => ({ date: s.date, totalTokens: s.totalTokens, cost: s.cost })),
     forecast: [],
     cumulative: { tokens: 0, cost: 0, low: 0, high: 0 },
+    scenario, backtest: { status: "insufficient-data", note: "At least two complete history windows are required for held-out accuracy." },
   };
   if (sumTotal <= 0) return empty;
 
@@ -229,24 +233,21 @@ export function buildForecastFromEvents(
     const p = predict(fitT, t, firstWeekday, useSeasonal);
     const c = predict(fitC, t, firstWeekday, useSeasonal);
     const totalTokens = Math.max(0, Math.round(p.y));
-    const cost = Math.max(0, Math.round(c.y * 1000) / 1000);
+    const cost = totalTokens === 0 ? 0 : Math.max(0, Math.round(c.y * 1000) / 1000);
     const low = Math.max(0, Math.round(p.y - Z * p.se));
     const high = Math.max(0, Math.round(p.y + Z * p.se));
     const costLow = Math.max(0, Math.round((c.y - Z * c.se) * 1000) / 1000);
     const costHigh = Math.max(0, Math.round((c.y + Z * c.se) * 1000) / 1000);
+    const weekend = fd.getDay() === 0 || fd.getDay() === 6;
+    const multiplier = scenario === "workdays" && weekend ? 0 : scenario === "quiet" ? .75 : scenario === "busy" ? 1.25 : 1;
+    const scaledTokens = Math.round(totalTokens * multiplier);
     forecast.push({
       date: fmtLocalDate(fd.getTime()),
-      inputTokens: Math.round(totalTokens * shares.input),
-      outputTokens: Math.round(totalTokens * shares.output),
-      cacheReadTokens: Math.round(totalTokens * shares.cacheRead),
-      cacheWriteTokens: Math.round(totalTokens * shares.cacheWrite),
-      reasoningTokens: Math.round(totalTokens * shares.reasoning),
-      totalTokens,
-      cost,
-      low,
-      high,
-      costLow,
-      costHigh,
+      inputTokens: Math.round(scaledTokens * shares.input), outputTokens: Math.round(scaledTokens * shares.output),
+      cacheReadTokens: Math.round(scaledTokens * shares.cacheRead), cacheWriteTokens: Math.round(scaledTokens * shares.cacheWrite),
+      reasoningTokens: Math.round(scaledTokens * shares.reasoning), totalTokens: scaledTokens,
+      cost: Math.round(cost * multiplier * 1000) / 1000, low: Math.round(low * multiplier), high: Math.round(high * multiplier),
+      costLow: Math.round(costLow * multiplier * 1000) / 1000, costHigh: Math.round(costHigh * multiplier * 1000) / 1000,
     });
     fd.setDate(fd.getDate() + 1);
   }
@@ -274,6 +275,7 @@ export function buildForecastFromEvents(
     history: series.map((s) => ({ date: s.date, totalTokens: s.totalTokens, cost: s.cost })),
     forecast,
     cumulative: { tokens: cum.tokens, cost: Math.round(cum.cost * 1000) / 1000, low: cum.low, high: cum.high },
+    scenario, backtest: { status: "insufficient-data", note: "At least two complete history windows are required for held-out accuracy." },
   };
 }
 

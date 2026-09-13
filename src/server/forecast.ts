@@ -1,4 +1,5 @@
 import { getDb } from "./db";
+import { dateKey, dayRange, shiftDate, validTimeZone } from "../shared/time";
 
 const PERIOD = 7;
 const Z = 1.28; // ~80% prediction interval
@@ -34,6 +35,8 @@ export interface ForecastResult {
   history: { date: string; totalTokens: number; cost: number }[];
   forecast: ForecastPoint[];
   cumulative: { tokens: number; cost: number; low: number; high: number };
+  scenario: "baseline" | "workdays" | "quiet" | "busy";
+  backtest: { status: "insufficient-data"; note: string };
 }
 
 function startOfLocalDay(offsetDays = 0): number {
@@ -76,31 +79,25 @@ interface DailyPoint {
   cost: number;
 }
 
-function buildDailySeries(agent: string | undefined, windowDays: number): DailyPoint[] {
-  const since = startOfLocalDay(-(windowDays - 1));
-  const until = startOfLocalDay(1);
+function buildDailySeries(agent: string | undefined, windowDays: number, timeZone: string): DailyPoint[] {
+  const today = dateKey(Date.now(), timeZone); const first = shiftDate(today, -(windowDays - 1));
+  const since = dayRange(first, timeZone)!.since; const until = dayRange(today, timeZone)!.until;
   const params: (string | number)[] = [since, until];
   const agentClause = agent ? " AND agent = ?" : "";
   if (agent) params.push(agent);
   const rows = getDb()
     .query(
-      `SELECT date(timestamp / 1000, 'unixepoch', 'localtime') as date,
-              COALESCE(SUM(input_tokens), 0) as input_tokens,
-              COALESCE(SUM(output_tokens), 0) as output_tokens,
-              COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
-              COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
-              COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
-              COALESCE(SUM(cost), 0) as cost
+      `SELECT timestamp, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost
        FROM usage_events
        WHERE timestamp >= ? AND timestamp < ?${agentClause}
-       GROUP BY date`
+       ORDER BY timestamp`
     )
-    .all(...params) as DayRow[];
-  const byDate = new Map(rows.map((r) => [r.date, r]));
+    .all(...params) as (Omit<DayRow, "date"> & { timestamp: number })[];
+  const byDate = new Map<string, DayRow>();
+  for (const r of rows) { const date = dateKey(r.timestamp, timeZone); const x = byDate.get(date) ?? { date, input_tokens:0, output_tokens:0, cache_read_tokens:0, cache_write_tokens:0, reasoning_tokens:0, cost:0 }; x.input_tokens += r.input_tokens; x.output_tokens += r.output_tokens; x.cache_read_tokens += r.cache_read_tokens; x.cache_write_tokens += r.cache_write_tokens; x.reasoning_tokens += r.reasoning_tokens; x.cost += r.cost; byDate.set(date, x); }
   const out: DailyPoint[] = [];
-  const d = new Date(since);
   for (let i = 0; i < windowDays; i++) {
-    const date = fmtDate(d);
+    const date = shiftDate(first, i);
     const r = byDate.get(date);
     const inputTokens = r?.input_tokens ?? 0;
     const outputTokens = r?.output_tokens ?? 0;
@@ -109,7 +106,7 @@ function buildDailySeries(agent: string | undefined, windowDays: number): DailyP
     const reasoningTokens = r?.reasoning_tokens ?? 0;
     out.push({
       date,
-      weekday: d.getDay(),
+      weekday: new Date(`${date}T12:00:00Z`).getUTCDay(),
       inputTokens,
       outputTokens,
       cacheReadTokens,
@@ -118,7 +115,6 @@ function buildDailySeries(agent: string | undefined, windowDays: number): DailyP
       totalTokens: inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens,
       cost: r?.cost ?? 0,
     });
-    d.setDate(d.getDate() + 1);
   }
   return out;
 }
@@ -204,10 +200,11 @@ function predict(fit: Fit, t: number, firstWeekday: number, useSeasonal: boolean
   return { y, se: fit.sigma * Math.sqrt(1 + lev) };
 }
 
-export function buildForecast(opts: { agent?: string; horizon?: number; windowDays?: number } = {}): ForecastResult {
+export function buildForecast(opts: { agent?: string; horizon?: number; windowDays?: number; scenario?: "baseline" | "workdays" | "quiet" | "busy"; timeZone?: string } = {}): ForecastResult {
   const horizon = clamp(Math.round(opts.horizon ?? 7), 1, 30);
   const windowDays = clamp(Math.round(opts.windowDays ?? 42), 7, 120);
-  const series = buildDailySeries(opts.agent, windowDays);
+  const scenario = opts.scenario ?? "baseline";
+  const timeZone = validTimeZone(opts.timeZone); const series = buildDailySeries(opts.agent, windowDays, timeZone);
   const totalY = series.map((d) => d.totalTokens);
   const costY = series.map((d) => d.cost);
   const sumTotal = totalY.reduce((a, b) => a + b, 0);
@@ -221,6 +218,7 @@ export function buildForecast(opts: { agent?: string; horizon?: number; windowDa
     history: series.map((d) => ({ date: d.date, totalTokens: d.totalTokens, cost: d.cost })),
     forecast: [],
     cumulative: { tokens: 0, cost: 0, low: 0, high: 0 },
+    scenario, backtest: { status: "insufficient-data", note: "At least two complete history windows are required for held-out accuracy." },
   };
   if (sumTotal <= 0) return empty;
 
@@ -249,33 +247,35 @@ export function buildForecast(opts: { agent?: string; horizon?: number; windowDa
   };
 
   const forecast: ForecastPoint[] = [];
-  const start = startOfLocalDay(1);
-  const d = new Date(start);
+  const firstForecastDate = shiftDate(dateKey(Date.now(), timeZone), 1);
   for (let i = 0; i < horizon; i++) {
     const t = windowDays + i;
     const p = predict(fitT, t, firstWeekday, useSeasonal);
     const c = predict(fitC, t, firstWeekday, useSeasonal);
     const totalTokens = Math.max(0, Math.round(p.y));
-    const cost = Math.max(0, Math.round(c.y * 1000) / 1000);
+    const cost = totalTokens === 0 ? 0 : Math.max(0, Math.round(c.y * 1000) / 1000);
     const low = Math.max(0, Math.round(p.y - Z * p.se));
     const high = Math.max(0, Math.round(p.y + Z * p.se));
     const costLow = Math.max(0, Math.round((c.y - Z * c.se) * 1000) / 1000);
     const costHigh = Math.max(0, Math.round((c.y + Z * c.se) * 1000) / 1000);
+    const forecastDate = shiftDate(firstForecastDate, i); const weekday = new Date(`${forecastDate}T12:00:00Z`).getUTCDay();
+    const weekend = weekday === 0 || weekday === 6;
+    const multiplier = scenario === "workdays" && weekend ? 0 : scenario === "quiet" ? 0.75 : scenario === "busy" ? 1.25 : 1;
+    const scaledTokens = Math.round(totalTokens * multiplier);
     forecast.push({
-      date: fmtDate(d),
-      inputTokens: Math.round(totalTokens * shares.input),
-      outputTokens: Math.round(totalTokens * shares.output),
-      cacheReadTokens: Math.round(totalTokens * shares.cacheRead),
-      cacheWriteTokens: Math.round(totalTokens * shares.cacheWrite),
-      reasoningTokens: Math.round(totalTokens * shares.reasoning),
-      totalTokens,
-      cost,
-      low,
-      high,
-      costLow,
-      costHigh,
+      date: forecastDate,
+      inputTokens: Math.round(scaledTokens * shares.input),
+      outputTokens: Math.round(scaledTokens * shares.output),
+      cacheReadTokens: Math.round(scaledTokens * shares.cacheRead),
+      cacheWriteTokens: Math.round(scaledTokens * shares.cacheWrite),
+      reasoningTokens: Math.round(scaledTokens * shares.reasoning),
+      totalTokens: scaledTokens,
+      cost: Math.round(cost * multiplier * 1000) / 1000,
+      low: Math.round(low * multiplier),
+      high: Math.round(high * multiplier),
+      costLow: Math.round(costLow * multiplier * 1000) / 1000,
+      costHigh: Math.round(costHigh * multiplier * 1000) / 1000,
     });
-    d.setDate(d.getDate() + 1);
   }
 
   const cum = forecast.reduce(
@@ -301,5 +301,6 @@ export function buildForecast(opts: { agent?: string; horizon?: number; windowDa
     history: series.map((d) => ({ date: d.date, totalTokens: d.totalTokens, cost: d.cost })),
     forecast,
     cumulative: { tokens: cum.tokens, cost: Math.round(cum.cost * 1000) / 1000, low: cum.low, high: cum.high },
+    scenario, backtest: { status: "insufficient-data", note: "At least two complete history windows are required for held-out accuracy." },
   };
 }

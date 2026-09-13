@@ -24,6 +24,10 @@ import { eventsToCsv, sessionsToCsv } from "./export";
 import { buildForecast } from "./forecast";
 import { getSkills } from "./skills";
 import { AGENTS } from "./sources/types";
+import { getCacheAnalytics, getComparison, getDiagnostics, getProjects, getProjectTrends, getSessionDetail } from "./insights";
+import { pricingMetadata } from "./pricing";
+import { redactPath, sanitizeTitle } from "../shared/privacy";
+import { dayRange, validTimeZone } from "../shared/time";
 
 const PORT = Number(process.env.PORT || 3000);
 const PROD = process.env.NODE_ENV === "production";
@@ -64,17 +68,29 @@ interface QueryOpts {
   until?: number;
   days?: number;
   horizon?: number;
+  model?: string;
+  project?: string;
+  timeZone?: string;
+  date?: string;
+  sessionId?: string;
+  scenario?: "baseline" | "workdays" | "quiet" | "busy";
 }
 
 function queryOpts(url: URL): QueryOpts {
   const agent = url.searchParams.get("agent") ?? undefined;
-  const since = parseQueryDate(url.searchParams.get("since") ?? "");
-  const until = parseQueryDate(url.searchParams.get("until") ?? "");
+  const timeZone = validTimeZone(url.searchParams.get("tz"));
+  const sinceRaw = url.searchParams.get("since") ?? "";
+  const untilRaw = url.searchParams.get("until") ?? "";
+  const since = /^\d{4}-\d{2}-\d{2}$/.test(sinceRaw) ? dayRange(sinceRaw, timeZone)?.since : parseQueryDate(sinceRaw);
+  const until = /^\d{4}-\d{2}-\d{2}$/.test(untilRaw) ? dayRange(untilRaw, timeZone)?.until : parseQueryDate(untilRaw);
   const daysRaw = url.searchParams.get("days");
   const days = daysRaw ? Number(daysRaw) : undefined;
   const horizonRaw = url.searchParams.get("horizon");
   const horizon = horizonRaw ? Number(horizonRaw) : undefined;
-  return { agent, since, until, days, horizon };
+  return { agent, since, until, days, horizon, model: url.searchParams.get("model") ?? undefined,
+    project: url.searchParams.get("project") ?? undefined, timeZone,
+    date: url.searchParams.get("date") ?? undefined, sessionId: url.searchParams.get("sessionId") ?? undefined,
+    scenario: (["baseline","workdays","quiet","busy"].includes(url.searchParams.get("scenario") ?? "") ? url.searchParams.get("scenario") : "baseline") as QueryOpts["scenario"] };
 }
 
 function api(handler: (opts: QueryOpts) => unknown) {
@@ -115,7 +131,7 @@ function handleExport(req: Request, kind: "events" | "sessions"): Response {
         body = sessionsToCsv(sessions);
         type = "text/csv";
       } else {
-        body = JSON.stringify(sessions, null, 2);
+        body = JSON.stringify(sessions.map((s) => ({ ...s, title: sanitizeTitle(s.title), cwd: redactPath(s.cwd) })), null, 2);
         type = "application/json";
       }
     }
@@ -133,6 +149,7 @@ function handleExport(req: Request, kind: "events" | "sessions"): Response {
 }
 
 const sources: UsageSource[] = dashboardEnabled ? [createClaudeCodeSource(), createOpencodeSource(), createCodexSource()] : [];
+const processStartedAt = Date.now();
 
 const landingRoute = PROD ? () => htmlResponse("landing.html") : landing;
 const dashboardRoute = dashboardEnabled
@@ -183,6 +200,14 @@ const server = serve({
     "/api/stats": {
       GET: api((opts) => getStats(opts)),
     },
+    "/api/projects": { GET: api((opts) => getProjects(opts)) },
+    "/api/project-trends": { GET: api((opts) => getProjectTrends(opts)) },
+    "/api/cache": { GET: api((opts) => getCacheAnalytics(opts)) },
+    "/api/comparison": { GET: api((opts) => getComparison(opts)) },
+    "/api/diagnostics": { GET: api(() => getDiagnostics()) },
+    "/api/pricing": { GET: api(() => pricingMetadata()) },
+    "/api/source-status": { GET: api(() => ({ origin: "server machine", mode: "server-watch", processStartedAt, lastRefresh: Date.now(), health: "running", sources: sources.map((s) => ({ id: s.id, state: "polling when configured" })), liveGuarantee: "New detectable records are pushed while server and browser are connected; field completeness depends on provider logs." })) },
+    "/api/session-detail": { GET: api((opts) => opts.agent && opts.sessionId ? getSessionDetail(opts.agent, opts.sessionId) : null) },
 
     "/api/sessions": {
       GET: api((opts) => getSessions(opts)),
@@ -190,10 +215,10 @@ const server = serve({
 
     "/api/forecast": {
       GET: api((opts) => {
-        const overall = buildForecast({ agent: opts.agent, horizon: opts.horizon });
+        const overall = buildForecast({ agent: opts.agent, horizon: opts.horizon, scenario: opts.scenario, timeZone: opts.timeZone });
         const agents: Record<string, ReturnType<typeof buildForecast>> = {};
         for (const id of Object.values(AGENTS)) {
-          agents[id] = buildForecast({ agent: id, horizon: opts.horizon });
+          agents[id] = buildForecast({ agent: id, horizon: opts.horizon, scenario: opts.scenario, timeZone: opts.timeZone });
         }
         return { asOf: Date.now(), overall, agents };
       }),
@@ -220,16 +245,16 @@ const server = serve({
     },
   },
 
-  fetch(req, server) {
+  async fetch(req, server) {
     const url = new URL(req.url);
     if (url.pathname === "/ws") {
       if (server.upgrade(req)) {
-        return;
+        return new Response(null, { status: 204 });
       }
       return new Response("WebSocket upgrade failed", { status: 400 });
     }
     if (PROD && url.pathname.startsWith("/chunk-")) {
-      return serveStatic(url.pathname);
+      return (await serveStatic(url.pathname)) ?? new Response("Not found", { status: 404 });
     }
     return new Response("Not found", { status: 404 });
   },

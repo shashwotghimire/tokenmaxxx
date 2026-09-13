@@ -10,6 +10,8 @@ import {
   type UsageEvent,
   type UsageSource,
 } from "./types";
+import { normalizeModel } from "../../shared/models";
+import { projectLabel, sanitizeTitle } from "../../shared/privacy";
 
 const DEFAULT_STATE_DIR = path.join(homedir(), ".codex");
 
@@ -56,9 +58,10 @@ export function computeDeltas(
     next.set(row.id, total);
     const delta = total - prev;
     const ts = row.updated_at_ms ?? row.created_at_ms ?? Date.now();
+    const normalized = normalizeModel(row.model);
     events.push({
       agent: AGENTS.CODEX,
-      model: String(row.model ?? "unknown"),
+      model: normalized.model, rawModel: normalized.rawModel,
       timestamp: ts,
       // Codex reports a single total per thread with no input/output split,
       // so the whole delta is attributed to input tokens.
@@ -67,6 +70,10 @@ export function computeDeltas(
       cacheWriteTokens: 0,
       cacheReadTokens: 0,
       reasoningTokens: 0,
+      sourceEventId: `${row.id}:${total}`,
+      sessionId: row.id,
+      project: row.cwd ? projectLabel(row.cwd) : undefined,
+      measurementStatus: "partial",
     });
   }
   return { events, next };
@@ -83,12 +90,12 @@ export function sessionFromRow(row: ThreadRow): SessionInfo {
     cacheWriteTokens: 0,
     cacheReadTokens: 0,
     reasoningTokens: 0,
-  });
+  }) ?? 0;
   return {
     agent: AGENTS.CODEX,
     sessionId: row.id,
-    title: row.title ?? null,
-    model: row.model ?? null,
+    title: sanitizeTitle(row.title),
+    model: normalizeModel(row.model).model,
     cwd: row.cwd ?? null,
     gitBranch: null,
     tokens,
@@ -100,6 +107,8 @@ export function sessionFromRow(row: ThreadRow): SessionInfo {
     reasoningTokens: 0,
     timeCreated: row.created_at_ms ?? null,
     timeUpdated: row.updated_at_ms ?? null,
+    measurementStatus: "partial",
+    measurementNote: "Codex exposes only a cumulative per-thread total; input/output/cache categories are unavailable.",
   };
 }
 

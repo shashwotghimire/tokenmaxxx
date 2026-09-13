@@ -2,6 +2,7 @@ import { computeStreaks, aggregateSummary, aggregateDaily, aggregateHourly, aggr
 import { buildForecastFromEvents } from "./forecast";
 import type { SessionInfo, UsageEvent } from "./types";
 import { AGENTS } from "../../server/sources/types";
+import { dayRange, validTimeZone } from "../../shared/time";
 
 let mode: "server" | "browser" = "server";
 let events: UsageEvent[] = [];
@@ -60,14 +61,17 @@ export function updateBrowserEvents(next: { events: UsageEvent[]; sessions: Sess
   notify();
 }
 
-function parseOpts(url: URL): { agent?: string; since?: number; until?: number; days?: number; horizon?: number; limit?: number } {
+function parseOpts(url: URL): { agent?: string; model?: string; project?: string; timeZone?: string; since?: number; until?: number; days?: number; horizon?: number; limit?: number; scenario?: "baseline" | "workdays" | "quiet" | "busy" } {
   const agent = url.searchParams.get("agent") ?? undefined;
-  const since = maybeNum(url.searchParams.get("since"));
-  const until = maybeNum(url.searchParams.get("until"));
+  const timeZone = validTimeZone(url.searchParams.get("tz"));
+  const sinceRaw = url.searchParams.get("since"); const untilRaw = url.searchParams.get("until");
+  const since = sinceRaw && /^\d{4}-\d{2}-\d{2}$/.test(sinceRaw) ? dayRange(sinceRaw, timeZone)?.since : maybeNum(sinceRaw);
+  const until = untilRaw && /^\d{4}-\d{2}-\d{2}$/.test(untilRaw) ? dayRange(untilRaw, timeZone)?.until : maybeNum(untilRaw);
   const days = maybeNum(url.searchParams.get("days"));
   const horizon = maybeNum(url.searchParams.get("horizon"));
   const limit = maybeNum(url.searchParams.get("limit"));
-  return { agent, since, until, days, horizon, limit };
+  const scenarioRaw = url.searchParams.get("scenario"); const scenario = scenarioRaw === "workdays" || scenarioRaw === "quiet" || scenarioRaw === "busy" ? scenarioRaw : "baseline";
+  return { agent, model: url.searchParams.get("model") ?? undefined, project: url.searchParams.get("project") ?? undefined, timeZone, since, until, days, horizon, limit, scenario };
 }
 
 function maybeNum(s: string | null): number | undefined {
@@ -109,13 +113,35 @@ export function maybeBrowserApi(url: string): unknown | null {
     case "/api/export/sessions":
       return sortSessions(sessions, opts.limit ?? 100_000);
     case "/api/forecast": {
-      const overall = buildForecastFromEvents(events, undefined, { horizon: opts.horizon });
+      const overall = buildForecastFromEvents(events, undefined, { horizon: opts.horizon, scenario: opts.scenario });
       const agents: Record<string, ReturnType<typeof buildForecastFromEvents>> = {};
       for (const id of Object.values(AGENTS)) {
-        agents[id] = buildForecastFromEvents(events, id, { horizon: opts.horizon });
+        agents[id] = buildForecastFromEvents(events, id, { horizon: opts.horizon, scenario: opts.scenario });
       }
       return { asOf: Date.now(), overall, agents };
     }
+    case "/api/projects": {
+      const map = new Map<string, { project: string; tokens: number; cost: number; events: number }>();
+      for (const e of filterEvents(events, opts)) { const project = e.project ?? "Unknown project"; const r = map.get(project) ?? { project, tokens: 0, cost: 0, events: 0 }; r.tokens += e.inputTokens + e.outputTokens + e.cacheReadTokens + e.cacheWriteTokens + e.reasoningTokens; r.cost += e.cost; r.events++; map.set(project, r); }
+      return [...map.values()].sort((a, b) => b.cost - a.cost || b.tokens - a.tokens);
+    }
+    case "/api/project-trends": {
+      const current = maybeBrowserApi("/api/projects" + u.search) as Array<{ project:string; tokens:number; cost:number; events:number }>;
+      return current.map((p) => ({ ...p, priorCost: 0, costChange: null }));
+    }
+    case "/api/cache": {
+      const rows = filterEvents(events, opts); const input = rows.reduce((n, e) => n + e.inputTokens, 0); const read = rows.reduce((n, e) => n + e.cacheReadTokens, 0); const write = rows.reduce((n, e) => n + e.cacheWriteTokens, 0);
+      return { measurable: input + read > 0, denominator: "input + cache-read tokens", hitRate: input + read ? read / (input + read) : null, inputTokens: input, cacheReadTokens: read, cacheWriteTokens: write, estimatedSavings: null, savingsNote: "Unavailable without a verified uncached price comparison.", hotspots: [] };
+    }
+    case "/api/comparison": {
+      const currentRows = filterEvents(events, opts); const start = opts.since ?? Math.min(...currentRows.map((e) => e.timestamp), Date.now()); const end = opts.until ?? Date.now(); const priorRows = filterEvents(events, { ...opts, since: start - (end - start), until: start });
+      const sum = (rows: UsageEvent[]) => ({ tokens: rows.reduce((n,e) => n + e.inputTokens + e.outputTokens + e.cacheReadTokens + e.cacheWriteTokens + e.reasoningTokens, 0), cost: rows.reduce((n,e) => n + e.cost, 0), events: rows.length }); const a=sum(currentRows), b=sum(priorRows);
+      return { current:a, prior:b, change:{ tokens:b.tokens?(a.tokens-b.tokens)/b.tokens:null, cost:b.cost?(a.cost-b.cost)/b.cost:null }, currentPeriodIncomplete:end>=Date.now(), contributors: maybeBrowserApi("/api/projects") };
+    }
+    case "/api/diagnostics":
+      return { generatedAt: Date.now(), duplicateImportsPrevented: events.filter((e) => e.sourceEventId).length, missingModel: events.filter((e) => e.model === "unknown").length, unknownPricing: 0, partialMeasurements: events.filter((e) => e.measurementStatus === "partial").length, parseErrors: null, note: "Parse errors are skipped during browser import and are not historically counted.", pricing: { currency: "USD", version: "bundled snapshot", methodology: "API-equivalent estimate; not a billed amount" } };
+    case "/api/source-status":
+      return { origin: "browser", mode: "browser-local" };
     default:
       return null;
   }

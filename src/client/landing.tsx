@@ -15,20 +15,20 @@ const AGENTS: { name: string; tag: string; brand: BrandKind }[] = [
 
 const FEATURES = [
   {
-    title: "Live streaming",
-    body: "New log lines reach your dashboard in ~1 second over WebSocket — watch tokens tick up as you work.",
+    title: "Trace spend to work",
+    body: "Move from current-period spend to project, model, agent, session, and expensive-event detail without losing the selected range.",
   },
   {
-    title: "Every breakdown",
-    body: "Slice usage by model, agent, day, and hour. Find which models burn your budget fastest.",
+    title: "Catch incomplete data",
+    body: "Unknown pricing, partial provider measurements, stale sources, and duplicate-resistant imports are stated instead of disguised as zero.",
   },
   {
-    title: "Forecast ahead",
-    body: "Trend + seasonality model predicts the next 7/14/30 days of tokens and cost with an 80% interval.",
+    title: "Plan with guardrails",
+    body: "Period comparisons, budgets, cache efficiency, and forecast intervals show assumptions and insufficient-data states.",
   },
   {
-    title: "Local & private",
-    body: "No accounts, no cloud sync, no telemetry of your own. Your usage data never leaves your machine.",
+    title: "Screenshot safely",
+    body: "Privacy mode obscures titles and paths, while exports redact credentials and reduce working directories to project labels.",
   },
 ];
 
@@ -311,7 +311,7 @@ export function Landing() {
             <p className="l-sub">
               Runs on your machine and reads the logs Claude Code, OpenCode, and Codex CLI already
               keep. Counts tokens and cost live, slices them by model and day, and forecasts the
-              next 30 days. Nothing is uploaded, ever.
+              next 30 days. Choose browser-local parsing or a self-hosted server; every view states which mode produced it.
             </p>
             <div className="l-cta">
               <a className="l-btn l-btn-primary l-btn-lg" href="#install">
@@ -378,6 +378,16 @@ export function Landing() {
         </div>
       </section>
 
+      <section className="l-mode-strip" aria-labelledby="mode-heading">
+        <div className="l-wrap l-mode-grid">
+          <div><p className="l-kicker">two local-first modes</p><h2 id="mode-heading" className="l-h2">Know where the data is read.</h2></div>
+          <dl className="l-mode-list">
+            <div><dt>Browser-local</dt><dd>You choose log files; parsing happens in that browser tab. Nothing is sent to the tokenmaxxx server. File permission and rescans depend on the browser.</dd></div>
+            <div><dt>Self-hosted server</dt><dd>The server reads mounted or configured paths on its own machine and streams updates to connected tabs. “Live” requires both watcher and tab to remain running.</dd></div>
+          </dl>
+        </div>
+      </section>
+
       <section className="l-section" id="features">
         <div className="l-wrap">
           <Reveal>
@@ -422,10 +432,10 @@ export function Landing() {
             <p className="l-kicker l-kicker-on">install</p>
             <h2 className="l-h2 l-h2-on">Self-host it in minutes</h2>
             <p className="l-sub l-sub-on">
-              One command. Your logs stay on your machine — tokenmaxxx reads the agents&apos; own
-              files and streams the dashboard to localhost.
+              One command. tokenmaxxx reads read-only mounted agent data on the machine running
+              the container and serves the dashboard on your configured host.
             </p>
-            <div className="l-os-tabs">
+            <div className="l-os-tabs" role="tablist" aria-label="Installation platform">
               {(
                 [
                   ["unix", "macOS / Linux"],
@@ -437,6 +447,9 @@ export function Landing() {
                   key={key}
                   className={`l-os-tab${os === key ? " l-os-tab-on" : ""}`}
                   onClick={() => setOs(key)}
+                  role="tab"
+                  aria-selected={os === key}
+                  tabIndex={os === key ? 0 : -1}
                 >
                   {label}
                 </button>
@@ -445,7 +458,7 @@ export function Landing() {
             <div className="l-code l-code-block">
               <span className="l-code-prompt">{PROMPT[os]}</span>
               <pre>{INSTALL[os]}</pre>
-              <CopyButton text={INSTALL[os]} />
+              <CopyButton text={INSTALL[os]!} />
             </div>
             <p className="l-sub l-sub-small l-sub-on">
               Then open <code>http://localhost:3000/dashboard</code>. Or run it directly with

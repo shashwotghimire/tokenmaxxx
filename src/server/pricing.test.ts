@@ -28,10 +28,8 @@ test("hand-computed example: 100 input + 50 output", () => {
   expect(cost).toBeCloseTo(0.00105, 8);
 });
 
-test("uses the default entry for unknown models", () => {
-  const cost = costForEvent(base({ model: "totally-unknown-model", inputTokens: 1_000_000 }));
-  const defaultPrice = getPricingTable().default!;
-  expect(cost).toBeCloseTo(defaultPrice.input, 8);
+test("does not invent a rate for unknown models", () => {
+  expect(costForEvent(base({ model: "totally-unknown-model", inputTokens: 1_000_000 }))).toBeNull();
 });
 
 test("zero usage has zero cost", () => {
