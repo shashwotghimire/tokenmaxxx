@@ -1,3 +1,4 @@
+import { resetDb } from "./db";
 import { test, expect, beforeAll } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -44,6 +45,8 @@ const ev = (over: Partial<UsageEvent> & { offset?: number }): UsageEvent => {
 };
 
 beforeAll(() => {
+  resetDb();
+  process.env.TOKENMAXXX_DB_PATH = path.join(dir, "test.db");
   handleEvent(ev({ agent: "opencode", model: "claude-sonnet-4-6", inputTokens: 1000, offset: 1000 }));
   handleEvent(ev({ agent: "claude-code", model: "claude-opus-4-6", inputTokens: 2000, offset: 2000 }));
   // a day yesterday

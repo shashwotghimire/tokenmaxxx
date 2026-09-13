@@ -50,7 +50,7 @@ export interface SessionInfo {
 export interface UsageSource {
   id: AgentId;
   /** Backfill existing data immediately, then stream new events as they arrive. */
-  watch(onEvent: (event: UsageEvent) => void, onSession?: (session: SessionInfo) => void): void;
+  watch(onEvent: (event: UsageEvent) => void, onSession?: (session: SessionInfo) => void): void | (() => void);
 }
 
 export interface TokenBreakdown {

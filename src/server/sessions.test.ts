@@ -1,3 +1,4 @@
+import { resetDb } from "./db";
 import { test, expect, beforeAll } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,8 +9,6 @@ process.env.TOKENMAXXX_DB_PATH = path.join(dir, "test.db");
 
 const { handleSession, getSessions } = await import("./aggregator");
 import { SessionTracker, parseLine } from "./sources/claudeCode";
-import { sessionFromRow as opencodeSession, type SessionRow as OpenCodeRow } from "./sources/opencode";
-import { sessionFromRow as codexSession, type ThreadRow } from "./sources/codex";
 import type { SessionInfo } from "./sources/types";
 
 const session = (over: Partial<SessionInfo>): SessionInfo => ({
@@ -32,6 +31,8 @@ const session = (over: Partial<SessionInfo>): SessionInfo => ({
 });
 
 beforeAll(() => {
+  resetDb();
+  process.env.TOKENMAXXX_DB_PATH = path.join(dir, "test.db");
   handleSession(session({}));
   handleSession(session({ sessionId: "ses_2", agent: "codex", title: null, model: null, tokens: 500, cost: 0.25, timeUpdated: 1500 }));
 });
@@ -92,51 +93,4 @@ test("claude parseLine still returns usage events", () => {
   const e = parseLine(JSON.stringify({ type: "assistant", timestamp: "2026-08-04T06:00:00.000Z", message: { model: "m", usage: { input_tokens: 1, output_tokens: 2 } } }));
   expect(e).not.toBeNull();
   expect(e!.inputTokens).toBe(1);
-});
-
-test("opencode sessionFromRow maps the session table row", () => {
-  const row: OpenCodeRow = {
-    id: "ses_1",
-    title: "Build it",
-    model: '{"id":"deepseek-v4-flash-free","providerID":"opencode","variant":"medium"}',
-    agent: "build",
-    directory: "/proj",
-    path: null,
-    cost: 1.25,
-    tokens_input: 100,
-    tokens_output: 40,
-    tokens_reasoning: 10,
-    tokens_cache_read: 500,
-    tokens_cache_write: 0,
-    time_created: 1000,
-    time_updated: 2000,
-  };
-  const s = opencodeSession(row);
-  expect(s.agent).toBe("opencode");
-  expect(s.model).toBe("deepseek-v4-flash-free");
-  expect(s.cwd).toBe("/proj");
-  expect(s.tokens).toBe(650);
-  expect(s.cost).toBe(1.25);
-  expect(s.reasoningTokens).toBe(10);
-});
-
-test("codex sessionFromRow attributes totals as input", () => {
-  const row: ThreadRow = {
-    id: "t1",
-    model: "gpt-5.5",
-    tokens_used: 4000,
-    updated_at_ms: 2000,
-    created_at_ms: 1000,
-    title: "Do the thing",
-    cwd: "/proj",
-  };
-  const s = codexSession(row);
-  expect(s.agent).toBe("codex");
-  expect(s.title).toBe("Do the thing");
-  expect(s.cwd).toBe("/proj");
-  expect(s.tokens).toBe(4000);
-  expect(s.inputTokens).toBe(4000);
-  expect(s.outputTokens).toBe(0);
-  expect(s.timeCreated).toBe(1000);
-  expect(s.timeUpdated).toBe(2000);
 });

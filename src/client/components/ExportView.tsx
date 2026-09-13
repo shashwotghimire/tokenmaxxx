@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { fetchJSON } from "../format";
 import { downloadRows, type ExportDataset, type ExportFormat } from "../exportFormat";
-import type { SessionInfo, UsageEvent } from "../browser/types";
+import type { SessionInfo, StoredEvent as UsageEvent } from "../../server/sources/types";
 
 type Range = "all" | "today" | "7" | "30";
 

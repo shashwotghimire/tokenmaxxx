@@ -1,3 +1,4 @@
+import { addLiveUsage } from "../liveUsage";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface UsageEvent {
@@ -19,6 +20,8 @@ const MAX_RETRY = 10_000;
 
 export function useWebSocket(path = "/ws") {
   const [lastEvent, setLastEvent] = useState<UsageEvent | null>(null);
+  const [liveTotals, setLiveTotals] = useState<UsageEvent | null>(null);
+  const [usageSeq, setUsageSeq] = useState(0);
   const [sessionSeq, setSessionSeq] = useState(0);
   const [state, setState] = useState<ConnectionState>("connecting");
   const wsRef = useRef<WebSocket | null>(null);
@@ -37,10 +40,13 @@ export function useWebSocket(path = "/ws") {
     };
 
     ws.onmessage = (msg) => {
+      if (wsRef.current !== ws) return;
       try {
         const data = JSON.parse(msg.data as string);
         if (data.type === "usage" && data.event) {
           setLastEvent(data.event as UsageEvent);
+          setLiveTotals((total) => addLiveUsage(total, data.event as UsageEvent));
+          setUsageSeq((n) => n + 1);
         } else if (data.type === "session") {
           setSessionSeq((n) => n + 1);
         }
@@ -50,6 +56,7 @@ export function useWebSocket(path = "/ws") {
     };
 
     ws.onclose = () => {
+      if (wsRef.current !== ws) return;
       setState("reconnecting");
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(connect, retryRef.current);
@@ -65,11 +72,13 @@ export function useWebSocket(path = "/ws") {
     connect();
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      wsRef.current?.close();
+      const ws = wsRef.current;
+      wsRef.current = null;
+      ws?.close();
     };
   }, [connect]);
 
-  return { lastEvent, sessionSeq, state };
+  return { lastEvent, liveTotals, usageSeq, sessionSeq, state };
 }
 
 export type { UsageEvent as WsUsageEvent };
