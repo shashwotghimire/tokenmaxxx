@@ -28,6 +28,7 @@ import { getCacheAnalytics, getComparison, getDiagnostics, getProjects, getProje
 import { pricingMetadata } from "./pricing";
 import { redactPath, sanitizeTitle } from "../shared/privacy";
 import { dayRange, validTimeZone } from "../shared/time";
+import { selectRootRoute } from "./app-mode";
 
 const PORT = Number(process.env.PORT || 3000);
 const PROD = process.env.NODE_ENV === "production";
@@ -157,10 +158,14 @@ const dashboardRoute = dashboardEnabled
     ? () => htmlResponse("index.html")
     : index
   : () => new Response(null, { status: 302, headers: { location: "/" } });
+const rootRoute = selectRootRoute(dashboardEnabled, {
+  landing: landingRoute,
+  dashboard: dashboardRoute,
+});
 
 const server = serve({
   routes: {
-    "/": landingRoute,
+    "/": rootRoute,
 
     "/dashboard": dashboardRoute,
 
