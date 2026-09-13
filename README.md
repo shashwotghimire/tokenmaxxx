@@ -12,9 +12,8 @@ bun install
 bun run dev
 ```
 
-Then open `http://localhost:3000` — a landing page that links to the live
-dashboard at `/dashboard`. That's it — no configuration needed if your agents
-log to their default locations.
+Then open `http://localhost:3000` — the dashboard opens directly. That's it —
+no configuration is needed if your agents log to their default locations.
 
 ## Self-hosting (Docker)
 
@@ -49,6 +48,9 @@ docker run -d --name tokenmaxxx -p 3000:3000 `
 docker run -d --name tokenmaxxx -p 3000:3000 -v %USERPROFILE%\.claude:/root/.claude:ro -v %USERPROFILE%\.local\share\opencode:/root/.local/share/opencode:ro -v %USERPROFILE%\.codex:/root/.codex:ro -v tokenmaxxx-data:/data ghcr.io/shashwotghimire/tokenmaxxx:latest
 ```
 
+Open `http://localhost:3000` after the container starts. Docker deployments go
+straight to the dashboard; the separate hosted site serves the landing page only.
+
 (Docker Desktop converts the Windows paths to the VM automatically; WSL2
 users can just run the bash version.)
 
@@ -59,8 +61,8 @@ at them with `TOKENMAXXX_CLAUDE_PATH`, `TOKENMAXXX_OPENCODE_DB`,
 
 ## Browser mode (no server data)
 
-When the site has no server-side data (e.g. a hosted deployment), visitors can
-click **Connect logs** on the dashboard and select their own agent logs:
+When the dashboard is running without server-side data, click **Connect logs**
+and select your own agent logs:
 Claude Code's `~/.claude/projects` folder, `opencode.db`, or `state_*.sqlite`.
 Everything is parsed **in the browser** with `sql.js` — nothing is uploaded.
 Note this only works in browsers with the File System Access API or file

@@ -7,6 +7,7 @@ FROM oven/bun:1-debian AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \
+    ENABLE_DASHBOARD=true \
     TOKENMAXXX_DB_PATH=/data/usage.db
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json bunfig.toml pricing.json build.ts tokens.css ./

@@ -72,7 +72,6 @@ const COMMANDS = [
   { id: "features", label: "Features", hint: "jump to features" },
   { id: "how", label: "How it works", hint: "jump to how it works" },
   { id: "install", label: "Install", hint: "jump to install" },
-  { id: "dashboard", label: "Open dashboard", hint: "go to /dashboard" },
   { id: "github", label: "View on GitHub", hint: "github.com/shashwotghimire/tokenmaxxx" },
 ] as const;
 
@@ -128,10 +127,6 @@ function CommandPalette({
 
   const go = (id: string) => {
     onClose();
-    if (id === "dashboard") {
-      window.location.href = "/dashboard";
-      return;
-    }
     if (id === "github") {
       window.open("https://github.com/shashwotghimire/tokenmaxxx", "_blank", "noreferrer");
       return;
@@ -295,9 +290,6 @@ export function Landing() {
           >
             <ThemeIcon theme={theme} />
           </button>
-          <a className="l-btn l-btn-primary" href="/dashboard">
-            Open dashboard
-          </a>
         </div>
       </nav>
 
@@ -462,7 +454,8 @@ export function Landing() {
               <CopyButton text={INSTALL[os]!} />
             </div>
             <p className="l-sub l-sub-small l-sub-on">
-              When the container starts, open <code>http://localhost:3000/dashboard</code>. If you
+              When the container starts, open <code>http://localhost:3000</code>. The dashboard opens
+              immediately. If you
               cloned the repository and already have Bun, use <code>bun start</code> instead.
             </p>
             <div className="l-cta">
