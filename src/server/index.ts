@@ -28,6 +28,7 @@ import { getCacheAnalytics, getComparison, getDiagnostics, getProjects, getProje
 import { pricingMetadata } from "./pricing";
 import { redactPath, sanitizeTitle } from "../shared/privacy";
 import { dayRange, validTimeZone } from "../shared/time";
+import { defaultLogRoots, listJsonFiles } from "./sources/jsonFiles";
 import { selectRootRoute } from "./app-mode";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -169,15 +170,6 @@ const server = serve({
 
     "/dashboard": dashboardRoute,
 
-    "/assets/sql-wasm.wasm": dashboardEnabled
-      ? () => {
-          const wasm = path.join(import.meta.dir, "..", "client", "assets", "sql-wasm.wasm");
-          return new Response(Bun.file(wasm), {
-            headers: { "content-type": "application/wasm", "cache-control": "public, max-age=31536000, immutable" },
-          });
-        }
-      : () => new Response("Not found", { status: 404 }),
-
     "/api/summary": {
       GET: api((opts) => getSummary(opts)),
     },
@@ -211,7 +203,10 @@ const server = serve({
     "/api/comparison": { GET: api((opts) => getComparison(opts)) },
     "/api/diagnostics": { GET: api(() => getDiagnostics()) },
     "/api/pricing": { GET: api(() => pricingMetadata()) },
-    "/api/source-status": { GET: api(() => ({ origin: "server machine", mode: "server-watch", processStartedAt, lastRefresh: Date.now(), health: "running", sources: sources.map((s) => ({ id: s.id, state: "polling when configured" })), liveGuarantee: "New detectable records are pushed while server and browser are connected; field completeness depends on provider logs." })) },
+    "/api/source-status": { GET: api(() => ({ origin: "server machine", mode: "server-watch", processStartedAt, lastRefresh: Date.now(), health: "running", sources: sources.map((s) => {
+      try { const files = defaultLogRoots(s.id).reduce((n, root) => n + listJsonFiles(root).length, 0); return { id: s.id, files, state: files ? "watching JSON logs" : "no JSON logs found" }; }
+      catch { return { id: s.id, files: 0, state: "unable to read JSON logs" }; }
+    }), liveGuarantee: "New detectable records are pushed while server and browser are connected; field completeness depends on provider logs." })) },
     "/api/session-detail": { GET: api((opts) => opts.agent && opts.sessionId ? getSessionDetail(opts.agent, opts.sessionId) : null) },
 
     "/api/sessions": {
@@ -291,7 +286,7 @@ for (const source of sources) {
   source.watch(
     (event) => {
       const stored = handleEvent(event);
-      broadcast({ type: "usage", event: stored });
+      if (stored.changed) broadcast({ type: "usage", event: stored.delta ?? stored });
     },
     (session: SessionInfo) => {
       handleSession(session);

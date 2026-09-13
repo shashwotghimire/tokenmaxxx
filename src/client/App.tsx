@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useAlertSettings } from "./hooks/useAlertSettings";
 import { useSoundAlerts } from "./hooks/useSoundAlerts";
-import { getVersion, isBrowserMode, getEventCount, subscribe } from "./browser/store";
 import { LiveTicker } from "./components/LiveTicker";
 import { OverviewTotals } from "./components/OverviewTotals";
 import { ModelTable } from "./components/ModelTable";
@@ -16,7 +15,6 @@ import { SessionsTable } from "./components/SessionsTable";
 import { SkillsView } from "./components/SkillsView";
 import { AlertSettings } from "./components/AlertSettings";
 import { ExportView } from "./components/ExportView";
-import { ConnectView } from "./components/ConnectView";
 import { ThemeIcon, useTheme } from "./theme";
 import { FilterBar } from "./components/FilterBar";
 import { InsightsView } from "./components/InsightsView";
@@ -48,21 +46,13 @@ export function App() {
   const tabsRef = useRef<HTMLElement>(null);
   const setTab = (next: Tab) => { setTabState(next); const q = new URLSearchParams(location.search); q.set("view", next); history.replaceState(null, "", `${location.pathname}?${q}`); };
   useEffect(() => { document.documentElement.dataset.privacy = privacy ? "on" : "off"; localStorage.setItem("tokenmaxxx:privacy", privacy ? "1" : "0"); }, [privacy]);
-  const [showConnect, setShowConnect] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const alerts = useAlertSettings();
-  const { lastEvent, sessionSeq, state } = useWebSocket();
+  const { lastEvent, sessionSeq, usageSeq, liveTotals, state } = useWebSocket();
   useSoundAlerts(lastEvent, alerts.settings, alerts.snoozedUntil);
-  const browserMode = useSyncExternalStore(subscribe, isBrowserMode, isBrowserMode);
-  const browserVersion = useSyncExternalStore(subscribe, getVersion, getVersion);
-  const eventCount = useSyncExternalStore(subscribe, getEventCount, getEventCount);
-  const refreshKey = browserMode
-    ? `browser:${browserVersion}`
-    : lastEvent
-      ? `${lastEvent.timestamp}:${lastEvent.cost}:${lastEvent.agent}:${lastEvent.model}`
-      : "0";
+  const refreshKey = String(usageSeq);
   const connected = state === "open";
 
   return (
@@ -86,14 +76,9 @@ export function App() {
           <button className={`btn ${showExport ? "btn-active" : ""}`} onClick={() => setShowExport((s) => !s)}>
             Export
           </button>
-          <button className="btn" onClick={() => setShowConnect((s) => !s)}>
-            {browserMode ? "Viewing local logs" : "Connect logs"}
-          </button>
-          <div className={`conn ${browserMode ? "conn-open" : connected ? "conn-open" : "conn-reconnecting"}`}>
+          <div className={`conn ${connected ? "conn-open" : "conn-reconnecting"}`}>
             <span className="dot" />
-            {browserMode
-              ? "browser"
-              : connected
+            {connected
                 ? "live"
                 : state === "connecting"
                   ? "connecting…"
@@ -101,8 +86,6 @@ export function App() {
           </div>
         </div>
       </header>
-
-      {showConnect && <ConnectView />}
 
       {showAlerts && (
         <AlertSettings
@@ -115,13 +98,6 @@ export function App() {
       )}
 
       {showExport && <ExportView />}
-
-      {browserMode && (
-        <div className="card muted browser-banner">
-          viewing <strong>{eventCount.toLocaleString()}</strong> events from logs you loaded in this browser —
-          nothing is uploaded to this server
-        </div>
-      )}
 
       <FilterBar onChange={() => setFilterSeq((n) => n + 1)} privacy={privacy} onPrivacy={() => setPrivacy((v) => !v)} />
       <nav className="tabs" role="tablist" aria-label="Dashboard views" ref={tabsRef} onKeyDown={(e) => { if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return; const i = TABS.findIndex((t) => t.id === tab); const next = TABS[(i + (e.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length]!; setTab(next.id); requestAnimationFrame(() => tabsRef.current?.querySelector<HTMLElement>(`[data-tab="${next.id}"]`)?.focus()); }}>
@@ -140,9 +116,9 @@ export function App() {
       <main className="content">
         {tab === "overview" && (
           <>
-            {!browserMode && <LiveTicker lastEvent={lastEvent} />}
+            <LiveTicker lastEvent={lastEvent} totals={liveTotals} />
             <OverviewTotals refreshKey={`${refreshKey}:${filterSeq}`} />
-            <SourceHealth refreshKey={refreshKey} browserMode={browserMode} />
+            <SourceHealth refreshKey={refreshKey} />
             <ContributionGraph refreshKey={`${refreshKey}:${filterSeq}`} />
           </>
         )}

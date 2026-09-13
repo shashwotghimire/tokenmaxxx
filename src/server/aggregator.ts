@@ -1,3 +1,4 @@
+import { mergeUsage, tokenFields } from "../shared/usage";
 import { getDb } from "./db";
 import { costForEvent, pricingMetadata } from "./pricing";
 import { normalizeModel } from "../shared/models";
@@ -41,12 +42,30 @@ function buildWhere(opts: QueryOptions): { where: string; params: (string | numb
   return { where: clauses.length ? "WHERE " + clauses.join(" AND ") : "", params };
 }
 
-export function handleEvent(event: UsageEvent): UsageEvent & { cost: number } {
+function storeEvent(event: UsageEvent): UsageEvent & { cost: number; changed: boolean; delta?: UsageEvent & { cost: number } } {
   const normalized = normalizeModel(event.model);
   event = { ...event, model: normalized.model, rawModel: event.rawModel ?? normalized.rawModel };
+  const db = getDb();
+  if (event.sourceEventId && (event.agent === "opencode" || (event.agent === "claude-code" && event.sourceEventId.startsWith("response:")))) {
+    const previous = db.query(`SELECT input_tokens AS inputTokens, output_tokens AS outputTokens,
+      cache_write_tokens AS cacheWriteTokens, cache_read_tokens AS cacheReadTokens,
+      reasoning_tokens AS reasoningTokens FROM usage_events WHERE agent = ? AND source_event_id = ?`)
+      .get(event.agent, event.sourceEventId) as UsageEvent | null;
+    if (previous) {
+      event = { ...event, ...mergeUsage(previous, event) };
+      const priced = costForEvent(event);
+      db.query(`UPDATE usage_events SET input_tokens=?, output_tokens=?, cache_write_tokens=?,
+        cache_read_tokens=?, reasoning_tokens=?, cost=? WHERE agent=? AND source_event_id=?`)
+        .run(event.inputTokens, event.outputTokens, event.cacheWriteTokens, event.cacheReadTokens,
+          event.reasoningTokens, priced ?? 0, event.agent, event.sourceEventId!);
+      const delta = { ...event };
+      for (const key of tokenFields) delta[key] -= previous[key];
+      return { ...event, cost: priced ?? 0, changed: tokenFields.some((key) => delta[key] !== 0),
+        delta: { ...delta, cost: costForEvent(delta) ?? 0 } };
+    }
+  }
   const priced = costForEvent(event);
   const cost = priced ?? 0;
-  const db = getDb();
   const existing = event.sourceEventId ? db.query("SELECT id FROM usage_events WHERE agent = ? AND source_event_id = ? LIMIT 1").get(event.agent, event.sourceEventId) : db
     .query(
       `SELECT id FROM usage_events
@@ -67,7 +86,7 @@ export function handleEvent(event: UsageEvent): UsageEvent & { cost: number } {
     );
   if (existing) {
     // Already ingested (e.g. re-backfill after a restart) — do not duplicate.
-    return { ...event, cost };
+    return { ...event, cost, changed: false };
   }
   db.query(
     `INSERT INTO usage_events
@@ -86,10 +105,35 @@ export function handleEvent(event: UsageEvent): UsageEvent & { cost: number } {
     cost, event.sourceEventId ?? null, event.rawModel ?? event.model, event.sessionId ?? null,
     event.project ?? null, event.measurementStatus ?? "complete", priced === null ? "unknown" : priced === 0 ? "free" : "estimated"
   );
-  return { ...event, cost };
+  return { ...event, cost, changed: true };
+}
+
+/** Commit response replacement and session refresh together. */
+export function handleEvent(event: UsageEvent) {
+  return getDb().transaction(() => {
+    const stored = storeEvent(event);
+    if (event.sessionId && stored.changed) {
+      handleSession({ agent: event.agent, sessionId: event.sessionId, title: null,
+        model: event.model, cwd: null, gitBranch: null, tokens: 0, cost: 0,
+        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+        reasoningTokens: 0, timeCreated: event.timestamp, timeUpdated: event.timestamp });
+    }
+    return stored;
+  })();
 }
 
 export function handleSession(session: SessionInfo): SessionInfo {
+  const totals = getDb().query(`SELECT COUNT(*) AS n, SUM(input_tokens) AS inputTokens,
+    SUM(output_tokens) AS outputTokens, SUM(cache_read_tokens) AS cacheReadTokens,
+    SUM(cache_write_tokens) AS cacheWriteTokens, SUM(reasoning_tokens) AS reasoningTokens,
+    SUM(cost) AS cost FROM usage_events WHERE agent = ? AND session_id = ?`)
+    .get(session.agent, session.sessionId) as { n: number } & SessionInfo;
+  if (totals.n) {
+    session = { ...session, inputTokens: totals.inputTokens, outputTokens: totals.outputTokens,
+      cacheReadTokens: totals.cacheReadTokens, cacheWriteTokens: totals.cacheWriteTokens,
+      reasoningTokens: totals.reasoningTokens, cost: totals.cost,
+      tokens: tokenFields.reduce((n, key) => n + totals[key], 0) };
+  }
   session = {
     ...session,
     title: sanitizeTitle(session.title),
@@ -115,8 +159,8 @@ export function handleSession(session: SessionInfo): SessionInfo {
         cache_read_tokens = excluded.cache_read_tokens,
         cache_write_tokens = excluded.cache_write_tokens,
         reasoning_tokens = excluded.reasoning_tokens,
-        time_created = MIN(sessions.time_created, excluded.time_created),
-        time_updated = MAX(sessions.time_updated, excluded.time_updated)`
+        time_created = MIN(COALESCE(sessions.time_created, excluded.time_created), COALESCE(excluded.time_created, sessions.time_created)),
+        time_updated = MAX(COALESCE(sessions.time_updated, excluded.time_updated), COALESCE(excluded.time_updated, sessions.time_updated))`
     )
     .run(
       session.agent,
@@ -185,8 +229,8 @@ export function getSessions(opts: QueryOptions & { limit?: number }): SessionInf
     reasoningTokens: r.reasoning_tokens,
     timeCreated: r.time_created,
     timeUpdated: r.time_updated,
-    measurementStatus: r.agent === "codex" ? "partial" : "complete",
-    measurementNote: r.agent === "codex" ? "Codex exposes only a cumulative per-thread total; output and cache categories are unavailable." : null,
+    measurementStatus: "complete",
+    measurementNote: null,
   }));
 }
 

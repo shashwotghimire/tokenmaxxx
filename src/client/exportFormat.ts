@@ -1,4 +1,4 @@
-import type { UsageEvent, SessionInfo } from "./browser/types";
+import type { StoredEvent as UsageEvent, SessionInfo } from "../server/sources/types";
 
 export type ExportFormat = "csv" | "json";
 export type ExportDataset = "events" | "sessions";

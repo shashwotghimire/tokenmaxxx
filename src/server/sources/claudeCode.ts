@@ -1,5 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { claudeUsageId, mergeUsage, tokenFields, tokenCount } from "../../shared/usage";
 import path from "node:path";
 import { costForEvent } from "../pricing";
 import {
@@ -9,28 +8,9 @@ import {
   type UsageEvent,
   type UsageSource,
 } from "./types";
-import { FileTailer } from "./tailer";
+import { watchJsonFiles, defaultLogRoots } from "./jsonFiles";
 import { normalizeModel } from "../../shared/models";
 import { projectLabel, sanitizeTitle } from "../../shared/privacy";
-
-const DEFAULT_ROOT = path.join(homedir(), ".claude", "projects");
-
-function rootDir(): string {
-  return process.env.TOKENMAXXX_CLAUDE_PATH || DEFAULT_ROOT;
-}
-
-function listJsonlFiles(dir: string, out: string[] = []): string[] {
-  if (!existsSync(dir)) return out;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      listJsonlFiles(full, out);
-    } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-      out.push(full);
-    }
-  }
-  return out;
-}
 
 export function usageEventFromJson(json: any): UsageEvent | null {
   if (json.type !== "assistant") return null;
@@ -45,12 +25,12 @@ export function usageEventFromJson(json: any): UsageEvent | null {
     model: normalized.model,
     rawModel: normalized.rawModel,
     timestamp: ts,
-    inputTokens: usage.input_tokens ?? 0,
-    outputTokens: usage.output_tokens ?? 0,
-    cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
-    cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+    inputTokens: tokenCount(usage.input_tokens),
+    outputTokens: tokenCount(usage.output_tokens),
+    cacheWriteTokens: tokenCount(usage.cache_creation_input_tokens),
+    cacheReadTokens: tokenCount(usage.cache_read_input_tokens),
     reasoningTokens: 0,
-    sourceEventId: json.uuid ? String(json.uuid) : undefined,
+    sourceEventId: claudeUsageId(json),
     sessionId: json.sessionId ?? json.session_id,
     project: json.cwd ? projectLabel(json.cwd) : undefined,
   };
@@ -102,6 +82,7 @@ const ZERO_STATE: Omit<SessionState, "sessionId"> = {
 export class SessionTracker {
   private state: SessionState;
   private lastSig = "";
+  private usage = new Map<string, UsageEvent>();
 
   constructor(private readonly filePath: string) {
     this.state = { sessionId: path.basename(filePath, ".jsonl"), ...ZERO_STATE };
@@ -131,8 +112,16 @@ export class SessionTracker {
       if (this.state.timeUpdated === null || ts > this.state.timeUpdated) this.state.timeUpdated = ts;
     }
 
-    const event = usageEventFromJson(json);
+    let event = usageEventFromJson(json);
     if (event) {
+      event.sessionId ??= this.state.sessionId;
+      const previous = event.sourceEventId ? this.usage.get(event.sourceEventId) : undefined;
+      event = mergeUsage(previous, event);
+      if (event.sourceEventId) this.usage.set(event.sourceEventId, event);
+      if (previous) {
+        for (const key of tokenFields) this.state[key] -= previous[key];
+        this.state.cost -= costForEvent(previous) ?? 0;
+      }
       this.state.inputTokens += event.inputTokens;
       this.state.outputTokens += event.outputTokens;
       this.state.cacheWriteTokens += event.cacheWriteTokens;
@@ -180,58 +169,14 @@ export function createClaudeCodeSource(): UsageSource {
   return {
     id: AGENTS.CLAUDE_CODE,
     watch(onEvent, onSession) {
-      const root = rootDir();
-      if (!existsSync(root)) {
-        console.warn(`[claude-code] log directory not found: ${root}. Use TOKENMAXXX_CLAUDE_PATH to point at it.`);
-        return;
-      }
-
-      const tailers = new Map<string, FileTailer>();
-      const trackers = new Map<string, SessionTracker>();
-      const seen = new Set<string>();
-
-      const scan = () => {
-        let files;
-        try {
-          files = listJsonlFiles(root);
-        } catch (e) {
-          console.warn(`[claude-code] failed to scan ${root}:`, e);
-          return;
-        }
-        for (const f of files) {
-          if (seen.has(f)) continue;
-          seen.add(f);
-          try {
-            statSync(f); // ensure readable
-          } catch {
-            continue;
-          }
-          tailers.set(f, new FileTailer(f));
-          trackers.set(f, new SessionTracker(f));
-        }
-      };
-
-      const tick = () => {
-        for (const [file, tailer] of tailers) {
-          const tracker = trackers.get(file);
-          if (!tracker) continue;
-          try {
-            const lines = tailer.readNewLines();
-            for (const line of lines) {
-              if (!line.trim()) continue;
-              const event = tracker.processLine(line);
-              if (event) onEvent(event);
-            }
-            if (onSession) tracker.emitIfChanged(onSession);
-          } catch (e) {
-            console.warn(`[claude-code] failed to tail ${file}:`, e);
-          }
-        }
-      };
-
-      scan();
-      setInterval(scan, 5_000);
-      setInterval(tick, 1_000);
+      return watchJsonFiles(defaultLogRoots("claude-code"), (file) => {
+        const tracker = new SessionTracker(file);
+        return (json) => {
+          const event = tracker.processLine(JSON.stringify(json));
+          if (event) onEvent(event);
+          if (onSession) tracker.emitIfChanged(onSession);
+        };
+      });
     },
   };
 }

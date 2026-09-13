@@ -2,8 +2,8 @@
 
 A compact, **local-first** web dashboard for real-time AI coding token
 usage across Claude Code, OpenCode, and Codex CLI. Inspired by the
-[`tokscale`](https://github.com/junhoyeo/tokscale) CLI — but browser only,
-no CLI, no TUI, no accounts, no cloud sync.
+[`tokscale`](https://github.com/junhoyeo/tokscale) CLI — with a browser dashboard and a local log watcher.
+No accounts or cloud sync.
 
 ## Setup
 
@@ -54,19 +54,10 @@ straight to the dashboard; the separate hosted site serves the landing page only
 (Docker Desktop converts the Windows paths to the VM automatically; WSL2
 users can just run the bash version.)
 
-Mount your agent logs read-only at their container paths (`/root/.claude`,
-`/root/.local/share/opencode/opencode.db`, `/root/.codex`) or point the sources
-at them with `TOKENMAXXX_CLAUDE_PATH`, `TOKENMAXXX_OPENCODE_DB`,
-`TOKENMAXXX_CODEX_DB`. The SQLite database persists in `/data`.
-
-## Browser mode (no server data)
-
-When the dashboard is running without server-side data, click **Connect logs**
-and select your own agent logs:
-Claude Code's `~/.claude/projects` folder, `opencode.db`, or `state_*.sqlite`.
-Everything is parsed **in the browser** with `sql.js` — nothing is uploaded.
-Note this only works in browsers with the File System Access API or file
-picker support, and the one-click permission is per session.
+The container automatically discovers JSON/JSONL logs in the mounted default
+agent directories. Mount folders read-only as shown above. There is no file
+picker, upload flow, custom source-path setting, or agent database reader.
+tokenmaxxx's own aggregate database persists in `/data`.
 
 ## What it shows
 
@@ -75,8 +66,8 @@ picker support, and the one-click permission is per session.
   event crosses a cost threshold. Configurable threshold, beep/voice/both,
   repeat count, test button, and a snooze. Settings persist in
   `localStorage`.
-- **Live ticker** — session token + cost totals, updated within ~1–2s of a
-  new log line.
+- **Live ticker** — token + cost increases since opening the dashboard, updated
+  as new log records arrive. Revised responses contribute only their increase.
 - **Overview** — today's input / output / cache-read / cache-write /
   reasoning tokens and cost, plus a GitHub-style contribution heatmap.
 - **Models** — token & cost breakdown per model.
@@ -94,8 +85,7 @@ picker support, and the one-click permission is per session.
 - **Hourly** — per-hour totals for a selected day.
 - **Stats** — totals, streaks, busiest day/hour, top model, top agent.
 - **Export** — download usage events or sessions as CSV/JSON (all time,
-  today, last 7/30 days, per agent) for pivoting in Excel or Notion. Works
-  in browser mode too, exporting whatever logs you loaded.
+  today, last 7/30 days, per agent) for pivoting in Excel or Notion.
 - **Spend & cache** — project/working-directory attribution, period-over-period
   comparisons, browser-stored budgets, cache hit rate, and measurable hotspots.
 - **Session explorer** — model changes, token categories, timeline, and expensive
@@ -113,11 +103,22 @@ picker support, and the one-click permission is per session.
   the selected IANA timezone. An end date selected in the UI is inclusive; the
   API converts it to the following local midnight. A DST day may be 23 or 25
   hours, and Asia/Kathmandu uses its +05:45 boundary.
-- Token totals add the categories reported by a provider. **Missing or unsupported
-  is not the same as zero.** Codex currently exposes only a cumulative per-thread
-  token total. tokenmaxxx converts increases to events, attributes that unsplit
-  total to input for aggregation compatibility, and labels output/cache/reasoning
-  as unavailable in session detail.
+- **Total tokens = uncached input + cache read + cache write + visible output +
+  reasoning.** Categories are normalized to avoid overlap. Cached context is
+  real processed usage, so large cache-read totals do not by themselves mean a bug.
+- Claude responses are keyed by API message ID and request ID, not the UUID of
+  each content-block log line. Repeated snapshots count once; growing usage
+  replaces the earlier snapshot. Per-step output accuracy depends on what the
+  installed Claude version records in its JSONL logs.
+- Codex JSONL `token_count.info.total_token_usage` values are cumulative.
+  Only increases are counted. Cached input is subtracted from input, and
+  reasoning is subtracted from output before being displayed separately.
+  Repeated snapshots and server restarts do not add usage again. Counter resets
+  establish a new baseline; usage across a reset cannot be reconstructed exactly.
+  Quota-only/context-window events are not counted as measured token usage.
+- OpenCode JSON message categories are already disjoint. `tokens.total` is
+  optional and is never added to its component categories. Changes to a message
+  replace its earlier usage snapshot instead of adding a second request.
 - Costs are USD API-equivalent estimates from the versioned bundled table in
   `pricing.json`, not recorded invoices. Unknown models remain **unpriced**;
   only an explicitly verified zero rate is shown as free.
@@ -127,9 +128,9 @@ picker support, and the one-click permission is per session.
 - Forecast headline and per-agent rows are independently fitted comparisons and
   are not additive. The UI exposes history size, assumptions, incomplete/low-
   confidence states, and does not claim backtest accuracy without held-out data.
-- “Live” in server mode means configured sources are polled and new detectable
-  records are pushed while the server and browser are running. Browser mode is a
-  local tab snapshot/rescan and cannot promise background operation.
+- “Live” means default JSON log folders are polled and new detectable records
+  are pushed while the server and browser are running. Missing folders are
+  rescanned, including when an agent starts after tokenmaxxx.
 
 ## Budgets and alerts
 
@@ -138,18 +139,30 @@ browser. They are advisory API-equivalent estimates. Notifications/sounds requir
 an explicit browser permission or interaction, run only while the page is active,
 and have no guaranteed background delivery.
 
-## Expected log paths (all optional)
+## Automatically discovered JSON logs
 
-| Agent       | Default path                                             | Env var to override          |
-| ----------- | -------------------------------------------------------- | ---------------------------- |
-| Claude Code | `~/.claude/projects/**/*.jsonl`                          | `TOKENMAXXX_CLAUDE_PATH`     |
-| OpenCode    | `~/.local/share/opencode/opencode.db` (SQLite)           | `TOKENMAXXX_OPENCODE_DB`     |
-| Codex CLI   | `~/.codex/state_*.sqlite` (SQLite, `threads` table)      | `TOKENMAXXX_CODEX_DB`        |
+| Agent | Default paths |
+| --- | --- |
+| Claude Code | `~/.claude/projects/**/*.jsonl` |
+| Codex CLI | `~/.codex/sessions/**/*.jsonl`, `~/.codex/archived_sessions/**/*.jsonl` |
+| OpenCode | `~/.local/share/opencode/storage/message/**/*.json` (usage), `storage/session/**/*.json` (metadata) |
 
-Any source whose files are missing is skipped with a warning naming the
-expected path; the others keep working. The app also runs with **zero**
-sources present (seeded/mock data can be added by pointing an env var at a
-file you control).
+Only JSON/JSONL files are read. SQLite agent databases are never imported.
+OpenCode versions that keep usage only in SQLite have no compatible JSON usage
+source; their usage will not appear. Other agents continue working normally.
+Run tokenmaxxx on the machine where the agents write these files; the hosted
+landing page cannot inspect files on your computer.
+
+## Upgrading token accounting
+
+On first startup after this change, the previous derived events and sessions are
+preserved in `usage_events_before_json_accounting` and
+`sessions_before_json_accounting` inside tokenmaxxx's own database. Active totals
+are rebuilt from automatically discovered JSON logs. This avoids mixing older
+UUID-counted Claude rows or cumulative SQLite thread totals with corrected events.
+The migration is transactional and runs once. Original agent files are untouched.
+History whose JSON logs are no longer present remains in the archive tables,
+not in the new dashboard totals. Database-only OpenCode history is also archived.
 
 ## How it works
 
@@ -168,8 +181,6 @@ are SQL `GROUP BY` queries over that one table.
 
 ## Notes
 
-- Codex reports only a per-thread total token count (no input/output
-  split), so its events are attributed as input tokens.
 - History is persisted in `~/.local/share/tokenmaxxx/usage.db` and
   survives restarts (re-backfilled events are deduplicated). Override with
   `TOKENMAXXX_DB_PATH`. On first run after a rename, an existing

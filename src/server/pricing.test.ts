@@ -35,3 +35,7 @@ test("does not invent a rate for unknown models", () => {
 test("zero usage has zero cost", () => {
   expect(costForEvent(base({}))).toBe(0);
 });
+
+test("reasoning is priced once at the output rate after category normalization", () => {
+  expect(costForEvent(base({ outputTokens: 100, reasoningTokens: 50 }))).toBeCloseTo(150 * 15 / 1_000_000, 10);
+});

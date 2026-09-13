@@ -41,7 +41,7 @@ const STEPS = [
   {
     n: "02",
     title: "Give it read-only access",
-    body: "Mount or select the Claude Code, OpenCode, and Codex CLI files you want it to read.",
+    body: "Run it alongside your agents. Their JSON and JSONL usage logs are detected automatically.",
   },
   {
     n: "03",
@@ -303,7 +303,7 @@ export function Landing() {
             <p className="l-sub">
               tokenmaxxx reads the usage files already saved by Claude Code, OpenCode, and Codex
               CLI. It shows tokens and estimated cost by day, model, project, and session, so you
-              can see where the money goes. Load files in your browser or run tokenmaxxx on your
+              can see where the money goes. Run tokenmaxxx on your
               own machine.
             </p>
             <div className="l-cta">
@@ -373,10 +373,10 @@ export function Landing() {
 
       <section className="l-mode-strip" aria-labelledby="mode-heading">
         <div className="l-wrap l-mode-grid">
-          <div><p className="l-kicker">choose how it reads your data</p><h2 id="mode-heading" className="l-h2">Your files stay on the machine you choose.</h2></div>
+          <div><p className="l-kicker">automatic usage tracking</p><h2 id="mode-heading" className="l-h2">Your files stay on the machine you choose.</h2></div>
           <dl className="l-mode-list">
-            <div><dt>In your browser</dt><dd>Choose the log files yourself. tokenmaxxx reads them in that tab and does not upload them. You may need to choose the files again in a new browser session.</dd></div>
-            <div><dt>On your machine</dt><dd>Run tokenmaxxx on your computer or server and point it at the log files. It watches for changes and updates the dashboard while it is running.</dd></div>
+            <div><dt>Automatic discovery</dt><dd>tokenmaxxx finds JSON and JSONL usage logs in your agents’ default folders. Start an agent and its recorded usage appears in the dashboard.</dd></div>
+            <div><dt>On your machine</dt><dd>Run tokenmaxxx on the computer where your agents save their logs. It watches for changes and updates the dashboard while it is running.</dd></div>
           </dl>
         </div>
       </section>

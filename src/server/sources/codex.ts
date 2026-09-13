@@ -1,182 +1,84 @@
-import { Database } from "bun:sqlite";
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
-import { costForEvent } from "../pricing";
-import {
-  AGENTS,
-  sessionSignature,
-  type SessionInfo,
-  type UsageEvent,
-  type UsageSource,
-} from "./types";
 import { normalizeModel } from "../../shared/models";
-import { projectLabel, sanitizeTitle } from "../../shared/privacy";
+import { projectLabel } from "../../shared/privacy";
+import { watchJsonFiles, defaultLogRoots, emptySession } from "./jsonFiles";
+import type { UsageEvent, UsageSource } from "./types";
 
-const DEFAULT_STATE_DIR = path.join(homedir(), ".codex");
+const fields = ["input_tokens", "cached_input_tokens", "cache_write_input_tokens", "output_tokens", "reasoning_output_tokens"] as const;
+type Counters = Record<(typeof fields)[number], number>;
+const count = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 
-export interface ThreadRow {
-  id: string;
-  model: string | null;
-  tokens_used: number | null;
-  updated_at_ms: number | null;
-  created_at_ms: number | null;
-  title: string | null;
-  cwd: string | null;
-}
+/** Replay the rollout from the beginning on each launch; stable snapshot IDs
+ * make replays idempotent in the aggregate DB. Never sum cumulative snapshots. */
+export class CodexTracker {
+  private sessionId = "";
+  private model = "unknown";
+  private cwd: string | undefined;
+  private created: number | null = null;
+  private previous: Counters | undefined;
 
-function stateDir(): string {
-  return process.env.TOKENMAXXX_CODEX_STATE_DIR || DEFAULT_STATE_DIR;
-}
-
-/** Find the newest state_*.sqlite in the codex dir (the name changes across releases). */
-function findStateDb(dir: string): string | null {
-  const explicit = process.env.TOKENMAXXX_CODEX_DB;
-  if (explicit) return existsSync(explicit) ? explicit : null;
-  if (!existsSync(dir)) return null;
-  let best: { name: string; mtime: number } | null = null;
-  for (const entry of readdirSync(dir)) {
-    const m = entry.match(/^state_\d+\.sqlite$/);
-    if (!m) continue;
-    const full = path.join(dir, entry);
-    const { mtimeMs } = statSync(full);
-    if (!best || mtimeMs > best.mtime) best = { name: full, mtime: mtimeMs };
+  session() {
+    return this.sessionId ? { ...emptySession("codex", this.sessionId), model: this.model,
+      cwd: this.cwd ?? null, timeCreated: this.created, timeUpdated: this.created } : null;
   }
-  return best?.name ?? null;
-}
 
-export function computeDeltas(
-  rows: ThreadRow[],
-  previous: Map<string, number>
-): { events: UsageEvent[]; next: Map<string, number> } {
-  const next = new Map(previous);
-  const events: UsageEvent[] = [];
-  for (const row of rows) {
-    const total = row.tokens_used ?? 0;
-    const prev = next.get(row.id) ?? 0;
-    if (total <= prev) continue;
-    next.set(row.id, total);
-    const delta = total - prev;
-    const ts = row.updated_at_ms ?? row.created_at_ms ?? Date.now();
-    const normalized = normalizeModel(row.model);
-    events.push({
-      agent: AGENTS.CODEX,
-      model: normalized.model, rawModel: normalized.rawModel,
-      timestamp: ts,
-      // Codex reports a single total per thread with no input/output split,
-      // so the whole delta is attributed to input tokens.
-      inputTokens: delta,
-      outputTokens: 0,
-      cacheWriteTokens: 0,
-      cacheReadTokens: 0,
-      reasoningTokens: 0,
-      sourceEventId: `${row.id}:${total}`,
-      sessionId: row.id,
-      project: row.cwd ? projectLabel(row.cwd) : undefined,
-      measurementStatus: "partial",
-    });
+  process(json: any): UsageEvent | null {
+    const payload = json.payload;
+    if (json.type === "session_meta") {
+      this.sessionId = String(payload?.id ?? "");
+      this.cwd = payload?.cwd;
+      const created = Date.parse(payload?.timestamp ?? json.timestamp);
+      this.created = Number.isFinite(created) ? created : null;
+      return null;
+    }
+    if (json.type === "turn_context") {
+      this.model = normalizeModel(payload?.model).model;
+      this.cwd = payload?.cwd ?? this.cwd;
+      return null;
+    }
+    if (json.type !== "event_msg" || payload?.type !== "token_count" || !this.sessionId) return null;
+    const usage = payload.info?.total_token_usage;
+    const timestamp = Date.parse(json.timestamp);
+    if (!usage || !Number.isFinite(timestamp)) return null;
+    // Some quota/context events contain only total_tokens, not measured usage.
+    if (!count(usage.input_tokens) && !count(usage.output_tokens)) return null;
+    const next = Object.fromEntries(fields.map((key) => [key, count(usage[key])])) as Counters;
+    if (this.previous && (next.input_tokens < this.previous.input_tokens || next.output_tokens < this.previous.output_tokens)) {
+      // A counter reset is a new baseline, not another full-session spend.
+      this.previous = next;
+      return null;
+    }
+    const delta = Object.fromEntries(fields.map((key) => [key, Math.max(0, next[key] - (this.previous?.[key] ?? 0))])) as Counters;
+    this.previous = next;
+    if (!delta.input_tokens && !delta.output_tokens) return null;
+    const cacheRead = Math.min(delta.cached_input_tokens, delta.input_tokens);
+    const cacheWrite = Math.min(delta.cache_write_input_tokens, delta.input_tokens - cacheRead);
+    const reasoning = Math.min(delta.reasoning_output_tokens, delta.output_tokens);
+    return {
+      agent: "codex", model: this.model, timestamp,
+      inputTokens: delta.input_tokens - cacheRead - cacheWrite,
+      outputTokens: delta.output_tokens - reasoning,
+      cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite, reasoningTokens: reasoning,
+      sourceEventId: `rollout:${this.sessionId}:${timestamp}:${JSON.stringify(next)}`,
+      sessionId: this.sessionId, project: this.cwd ? projectLabel(this.cwd) : undefined,
+      measurementStatus: typeof usage.input_tokens === "number" && typeof usage.output_tokens === "number" ? "complete" : "partial",
+    };
   }
-  return { events, next };
-}
-
-export function sessionFromRow(row: ThreadRow): SessionInfo {
-  const tokens = row.tokens_used ?? 0;
-  const cost = costForEvent({
-    agent: AGENTS.CODEX,
-    model: String(row.model ?? "unknown"),
-    timestamp: row.updated_at_ms ?? row.created_at_ms ?? 0,
-    inputTokens: tokens,
-    outputTokens: 0,
-    cacheWriteTokens: 0,
-    cacheReadTokens: 0,
-    reasoningTokens: 0,
-  }) ?? 0;
-  return {
-    agent: AGENTS.CODEX,
-    sessionId: row.id,
-    title: sanitizeTitle(row.title),
-    model: normalizeModel(row.model).model,
-    cwd: row.cwd ?? null,
-    gitBranch: null,
-    tokens,
-    cost,
-    inputTokens: tokens,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    reasoningTokens: 0,
-    timeCreated: row.created_at_ms ?? null,
-    timeUpdated: row.updated_at_ms ?? null,
-    measurementStatus: "partial",
-    measurementNote: "Codex exposes only a cumulative per-thread total; input/output/cache categories are unavailable.",
-  };
 }
 
 export function createCodexSource(): UsageSource {
   return {
-    id: AGENTS.CODEX,
+    id: "codex",
     watch(onEvent, onSession) {
-      const dir = stateDir();
-      const dbFile = findStateDb(dir);
-      if (!dbFile) {
-        console.warn(
-          `[codex] no state database found under ${dir}. Use TOKENMAXXX_CODEX_DB to point at a state_*.sqlite file.`
-        );
-        return;
-      }
-
-      const lastTokens = new Map<string, number>();
-      const lastSessionSignatures = new Map<string, string>();
-      let db: Database | null = null;
-
-      const open = (): Database | null => {
-        try {
-          return new Database(dbFile, { readonly: true });
-        } catch (e) {
-          console.warn(`[codex] failed to open ${dbFile}:`, e);
-          return null;
-        }
-      };
-
-      const tick = () => {
-        if (!db) db = open();
-        if (!db) return;
-        let rows: ThreadRow[];
-        try {
-          rows = db
-            .query(
-              `SELECT id, model, tokens_used, updated_at_ms, created_at_ms, title, cwd FROM threads
-               WHERE tokens_used > 0`
-            )
-            .all() as ThreadRow[];
-        } catch (e) {
-          console.warn(`[codex] failed to poll ${dbFile}:`, e);
-          try {
-            db.close();
-          } catch {}
-          db = null;
-          return;
-        }
-
-        const { events, next } = computeDeltas(rows, lastTokens);
-        lastTokens.clear();
-        for (const [id, total] of next) lastTokens.set(id, total);
-        for (const event of events) onEvent(event);
-
-        if (onSession) {
-          for (const row of rows) {
-            if (!row.id) continue;
-            const session = sessionFromRow(row);
-            const sig = sessionSignature(session);
-            if (lastSessionSignatures.get(row.id) === sig) continue;
-            lastSessionSignatures.set(row.id, sig);
-            onSession(session);
+      return watchJsonFiles(defaultLogRoots("codex"), () => {
+        const tracker = new CodexTracker();
+        return (json) => {
+          const event = tracker.process(json);
+          if (event) onEvent(event);
+          if (onSession && (event || json.type === "session_meta" || json.type === "turn_context")) {
+            const session = tracker.session(); if (session) onSession(session);
           }
-        }
-      };
-
-      tick();
-      setInterval(tick, 3_000);
+        };
+      });
     },
   };
 }

@@ -1,55 +1,40 @@
 import { test, expect } from "bun:test";
-import { computeDeltas, type ThreadRow } from "./codex";
-
-const row = (id: string, tokens: number, updated = 1000): ThreadRow => ({
-  id,
-  model: "gpt-5.5",
-  tokens_used: tokens,
-  updated_at_ms: updated,
-  created_at_ms: 100,
-  title: null,
-  cwd: null,
+import { CodexTracker } from "./codex";
+export function tracker() {
+  const t = new CodexTracker();
+  t.process({ type: "session_meta", payload: { id: "synthetic-thread", cwd: "/synthetic/project" } });
+  t.process({ type: "turn_context", payload: { model: "gpt-5.5" } });
+  return t;
+}
+export function snapshot(input: number, output: number, cached = 0, reasoning = 0, timestamp = "2026-09-13T10:00:00Z") {
+  return { type: "event_msg", timestamp, payload: { type: "token_count", info: {
+    total_token_usage: { input_tokens: input, output_tokens: output, cached_input_tokens: cached, reasoning_output_tokens: reasoning, total_tokens: input + output },
+    last_token_usage: { input_tokens: input, output_tokens: output },
+  } } };
+}
+test("Codex categories total 1200, not 1900 when cache/reasoning are subsets", () => {
+  const e = tracker().process(snapshot(1000, 200, 600, 100))!;
+  expect(e.inputTokens).toBe(400); expect(e.cacheReadTokens).toBe(600);
+  expect(e.outputTokens).toBe(100); expect(e.reasoningTokens).toBe(100);
+  expect(e.inputTokens + e.cacheReadTokens + e.outputTokens + e.reasoningTokens).toBe(1200);
 });
-
-test("emits the full total for a new thread", () => {
-  const { events, next } = computeDeltas([row("t1", 500)], new Map());
-  expect(events).toHaveLength(1);
-  expect(events[0]!.inputTokens).toBe(500);
-  expect(events[0]!.agent).toBe("codex");
-  expect(events[0]!.model).toBe("gpt-5.5");
-  expect(events[0]!.timestamp).toBe(1000);
-  expect(next.get("t1")).toBe(500);
+test("cumulative updates emit only new usage and repeated quota snapshots emit nothing", () => {
+  const t = tracker(); t.process(snapshot(1000, 200, 600, 100));
+  expect(t.process(snapshot(1000, 200, 600, 100, "2026-09-13T10:01:00Z"))).toBeNull();
+  const e = t.process(snapshot(1500, 300, 900, 150, "2026-09-13T10:02:00Z"))!;
+  expect(e.inputTokens + e.cacheReadTokens + e.outputTokens + e.reasoningTokens).toBe(600);
 });
-
-test("emits only the delta when a thread grows", () => {
-  const prev = new Map([["t1", 500]]);
-  const { events, next } = computeDeltas([row("t1", 700)], prev);
-  expect(events).toHaveLength(1);
-  expect(events[0]!.inputTokens).toBe(200);
-  expect(next.get("t1")).toBe(700);
+test("replaying a rollout produces the same event IDs", () => {
+  expect(tracker().process(snapshot(1000, 200))!.sourceEventId).toBe(tracker().process(snapshot(1000, 200))!.sourceEventId);
 });
-
-test("emits nothing when tokens are unchanged", () => {
-  const prev = new Map([["t1", 700]]);
-  const { events } = computeDeltas([row("t1", 700)], prev);
-  expect(events).toHaveLength(0);
+test("ignores null info and synthetic context-window totals", () => {
+  const t = tracker();
+  expect(t.process({ type: "event_msg", payload: { type: "token_count", info: null } })).toBeNull();
+  const j = snapshot(0, 0); j.payload.info.total_token_usage.total_tokens = 200000;
+  expect(t.process(j)).toBeNull();
 });
-
-test("skips threads with zero tokens", () => {
-  const { events } = computeDeltas([row("t0", 0)], new Map());
-  expect(events).toHaveLength(0);
-});
-
-test("falls back to created_at when updated_at is missing", () => {
-  const r = { ...row("t1", 100), updated_at_ms: null };
-  const { events } = computeDeltas([r], new Map());
-  expect(events[0]!.timestamp).toBe(100);
-});
-
-test("uses 0 buckets for output/cache/reasoning", () => {
-  const { events } = computeDeltas([row("t1", 100)], new Map());
-  expect(events[0]!.outputTokens).toBe(0);
-  expect(events[0]!.cacheWriteTokens).toBe(0);
-  expect(events[0]!.cacheReadTokens).toBe(0);
-  expect(events[0]!.reasoningTokens).toBe(0);
+test("counter reset establishes a baseline without adding the session again", () => {
+  const t = tracker(); t.process(snapshot(1000, 200));
+  expect(t.process(snapshot(500, 100))).toBeNull();
+  expect(t.process(snapshot(600, 120))!.inputTokens).toBe(100);
 });

@@ -28,6 +28,7 @@ export function getDb(): Database {
   _db.exec("PRAGMA journal_mode = WAL;");
   _db.exec("PRAGMA synchronous = NORMAL;");
   migrate(_db);
+  migrateJsonAccounting(_db);
   return _db;
 }
 
@@ -78,5 +79,20 @@ function migrate(db: Database) {
   add("project", "project TEXT");
   add("measurement_status", "measurement_status TEXT NOT NULL DEFAULT 'complete'");
   add("cost_status", "cost_status TEXT NOT NULL DEFAULT 'unknown'");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_events(agent, session_id)");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_source_event ON usage_events(agent, source_event_id) WHERE source_event_id IS NOT NULL");
+}
+
+/** Keep the old derived data intact for recovery, but never mix SQLite-source
+ * totals/UUID-counted Claude rows with corrected JSON-source measurements. */
+export function migrateJsonAccounting(db: Database): void {
+  db.exec("CREATE TABLE IF NOT EXISTS accounting_versions (version INTEGER PRIMARY KEY)");
+  if (db.query("SELECT version FROM accounting_versions WHERE version = 2").get()) return;
+  db.transaction(() => {
+    db.exec(`CREATE TABLE IF NOT EXISTS usage_events_before_json_accounting AS SELECT * FROM usage_events;
+      CREATE TABLE IF NOT EXISTS sessions_before_json_accounting AS SELECT * FROM sessions;
+      DELETE FROM usage_events;
+      DELETE FROM sessions;
+      INSERT INTO accounting_versions VALUES (2);`);
+  })();
 }
