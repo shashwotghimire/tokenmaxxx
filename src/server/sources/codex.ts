@@ -1,180 +1,140 @@
-import { Database } from "bun:sqlite";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { FileTailer } from "./tailer";
+import { AGENTS, type SessionInfo, type UsageEvent, type UsageSource } from "./types";
 import { costForEvent } from "../pricing";
-import {
-  AGENTS,
-  sessionSignature,
-  type SessionInfo,
-  type UsageEvent,
-  type UsageSource,
-} from "./types";
 import { normalizeModel } from "../../shared/models";
-import { projectLabel, sanitizeTitle } from "../../shared/privacy";
+import { projectLabel } from "../../shared/privacy";
 
-const DEFAULT_STATE_DIR = path.join(homedir(), ".codex");
+const stateDir = () => process.env.TOKENMAXXX_CODEX_STATE_DIR || path.join(homedir(), ".codex");
 
-export interface ThreadRow {
-  id: string;
-  model: string | null;
-  tokens_used: number | null;
-  updated_at_ms: number | null;
-  created_at_ms: number | null;
-  title: string | null;
-  cwd: string | null;
-}
-
-function stateDir(): string {
-  return process.env.TOKENMAXXX_CODEX_STATE_DIR || DEFAULT_STATE_DIR;
-}
-
-/** Find the newest state_*.sqlite in the codex dir (the name changes across releases). */
-function findStateDb(dir: string): string | null {
-  const explicit = process.env.TOKENMAXXX_CODEX_DB;
-  if (explicit) return existsSync(explicit) ? explicit : null;
-  if (!existsSync(dir)) return null;
-  let best: { name: string; mtime: number } | null = null;
-  for (const entry of readdirSync(dir)) {
-    const m = entry.match(/^state_\d+\.sqlite$/);
-    if (!m) continue;
-    const full = path.join(dir, entry);
-    const { mtimeMs } = statSync(full);
-    if (!best || mtimeMs > best.mtime) best = { name: full, mtime: mtimeMs };
+function listRollouts(dir: string, out: string[] = []): string[] {
+  if (!existsSync(dir)) return out;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) listRollouts(full, out);
+    else if (entry.isFile() && entry.name.endsWith(".jsonl")) out.push(full);
   }
-  return best?.name ?? null;
+  return out;
 }
 
-export function computeDeltas(
-  rows: ThreadRow[],
-  previous: Map<string, number>
-): { events: UsageEvent[]; next: Map<string, number> } {
-  const next = new Map(previous);
-  const events: UsageEvent[] = [];
-  for (const row of rows) {
-    const total = row.tokens_used ?? 0;
-    const prev = next.get(row.id) ?? 0;
-    if (total <= prev) continue;
-    next.set(row.id, total);
-    const delta = total - prev;
-    const ts = row.updated_at_ms ?? row.created_at_ms ?? Date.now();
-    const normalized = normalizeModel(row.model);
-    events.push({
-      agent: AGENTS.CODEX,
-      model: normalized.model, rawModel: normalized.rawModel,
-      timestamp: ts,
-      // Codex reports a single total per thread with no input/output split,
-      // so the whole delta is attributed to input tokens.
-      inputTokens: delta,
-      outputTokens: 0,
-      cacheWriteTokens: 0,
-      cacheReadTokens: 0,
+type Usage = { input_tokens?: number; cached_input_tokens?: number; output_tokens?: number; reasoning_output_tokens?: number };
+
+/** Codex token_count records contain a per-turn delta and a cumulative total.
+ * The delta is authoritative for event time and model; the cumulative value is
+ * useful only as a fallback for older rollouts without last_token_usage.
+ */
+export class RolloutTracker {
+  private model = "unknown";
+  private sessionId: string;
+  private cwd: string | undefined;
+  private previous: Required<Usage> = { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0 };
+  private ordinal = 0;
+  private counters = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, cost: 0 };
+  private first: number | null = null;
+  private latest: number | null = null;
+
+  constructor(private readonly file: string) {
+    this.sessionId = path.basename(file, ".jsonl");
+  }
+
+  processLine(line: string): UsageEvent | null {
+    let record: any;
+    try { record = JSON.parse(line); } catch { return null; }
+    if (record.type === "session_meta") {
+      if (record.payload?.id) this.sessionId = String(record.payload.id);
+      if (record.payload?.cwd) this.cwd = String(record.payload.cwd);
+    }
+    if (record.type === "turn_context" && record.payload?.model) this.model = String(record.payload.model);
+    if (record.type !== "event_msg" || record.payload?.type !== "token_count") return null;
+    const info = record.payload.info;
+    if (!info) return null;
+    const total = info.total_token_usage as Usage | undefined;
+    const last = info.last_token_usage as Usage | undefined;
+    if (!total && !last) return null;
+    const keys = ["input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens"] as const;
+    if (total && keys.some(key => Number(total[key] ?? 0) < this.previous[key])) {
+      for (const key of keys) this.previous[key] = Math.max(0, Number(total[key]) || 0);
+      return null;
+    }
+    const usage = {} as Required<Usage>;
+    for (const key of keys) {
+      const current = Number(total?.[key]);
+      const previous = this.previous[key];
+      // Prefer the cumulative difference: repeated token_count messages can
+      // carry the same last_token_usage and must not be counted twice.
+      usage[key] = total && Number.isFinite(current)
+        ? Math.max(0, current - previous)
+        : Math.max(0, Number(last?.[key]) || 0);
+      if (total && Number.isFinite(current)) this.previous[key] = current;
+    }
+    if (!keys.some(key => usage[key] > 0)) return null;
+    const timestamp = Date.parse(record.timestamp);
+    if (!Number.isFinite(timestamp)) return null;
+    const input = usage.input_tokens;
+    const cached = Math.min(input, usage.cached_input_tokens);
+    const normalized = normalizeModel(this.model);
+    const event: UsageEvent = {
+      agent: AGENTS.CODEX, model: normalized.model, rawModel: normalized.rawModel,
+      timestamp, inputTokens: input - cached, outputTokens: usage.output_tokens,
+      cacheReadTokens: cached, cacheWriteTokens: 0,
+      // Reasoning tokens are included in output_tokens by Codex. Keep the
+      // display's total additive by not counting them a second time.
       reasoningTokens: 0,
-      sourceEventId: `${row.id}:${total}`,
-      sessionId: row.id,
-      project: row.cwd ? projectLabel(row.cwd) : undefined,
-      measurementStatus: "partial",
-    });
+      sessionId: this.sessionId, project: this.cwd ? projectLabel(this.cwd) : undefined,
+      sourceEventId: `rollout:${this.sessionId}:${++this.ordinal}`,
+    };
+    this.counters.inputTokens += event.inputTokens;
+    this.counters.outputTokens += event.outputTokens;
+    this.counters.cacheReadTokens += event.cacheReadTokens;
+    this.counters.cost += costForEvent(event) ?? 0;
+    this.first ??= timestamp;
+    this.latest = timestamp;
+    return event;
   }
-  return { events, next };
-}
 
-export function sessionFromRow(row: ThreadRow): SessionInfo {
-  const tokens = row.tokens_used ?? 0;
-  const cost = costForEvent({
-    agent: AGENTS.CODEX,
-    model: String(row.model ?? "unknown"),
-    timestamp: row.updated_at_ms ?? row.created_at_ms ?? 0,
-    inputTokens: tokens,
-    outputTokens: 0,
-    cacheWriteTokens: 0,
-    cacheReadTokens: 0,
-    reasoningTokens: 0,
-  }) ?? 0;
-  return {
-    agent: AGENTS.CODEX,
-    sessionId: row.id,
-    title: sanitizeTitle(row.title),
-    model: normalizeModel(row.model).model,
-    cwd: row.cwd ?? null,
-    gitBranch: null,
-    tokens,
-    cost,
-    inputTokens: tokens,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    reasoningTokens: 0,
-    timeCreated: row.created_at_ms ?? null,
-    timeUpdated: row.updated_at_ms ?? null,
-    measurementStatus: "partial",
-    measurementNote: "Codex exposes only a cumulative per-thread total; input/output/cache categories are unavailable.",
-  };
+  snapshot(): SessionInfo {
+    const c = this.counters;
+    return {
+      agent: AGENTS.CODEX, sessionId: this.sessionId, title: null,
+      model: normalizeModel(this.model).model, cwd: this.cwd ?? null, gitBranch: null,
+      tokens: c.inputTokens + c.outputTokens + c.cacheReadTokens,
+      cost: c.cost, ...c, timeCreated: this.first, timeUpdated: this.latest,
+    };
+  }
 }
 
 export function createCodexSource(): UsageSource {
   return {
     id: AGENTS.CODEX,
     watch(onEvent, onSession) {
-      const dir = stateDir();
-      const dbFile = findStateDb(dir);
-      if (!dbFile) {
-        console.warn(
-          `[codex] no state database found under ${dir}. Use TOKENMAXXX_CODEX_DB to point at a state_*.sqlite file.`
-        );
+      const root = path.join(stateDir(), "sessions");
+      if (!existsSync(root)) {
+        console.warn(`[codex] rollout directory not found: ${root}`);
         return;
       }
-
-      const lastTokens = new Map<string, number>();
-      const lastSessionSignatures = new Map<string, string>();
-      let db: Database | null = null;
-
-      const open = (): Database | null => {
-        try {
-          return new Database(dbFile, { readonly: true });
-        } catch (e) {
-          console.warn(`[codex] failed to open ${dbFile}:`, e);
-          return null;
-        }
-      };
-
+      const tailers = new Map<string, FileTailer>();
+      const trackers = new Map<string, RolloutTracker>();
       const tick = () => {
-        if (!db) db = open();
-        if (!db) return;
-        let rows: ThreadRow[];
         try {
-          rows = db
-            .query(
-              `SELECT id, model, tokens_used, updated_at_ms, created_at_ms, title, cwd FROM threads
-               WHERE tokens_used > 0`
-            )
-            .all() as ThreadRow[];
-        } catch (e) {
-          console.warn(`[codex] failed to poll ${dbFile}:`, e);
-          try {
-            db.close();
-          } catch {}
-          db = null;
-          return;
-        }
-
-        const { events, next } = computeDeltas(rows, lastTokens);
-        lastTokens.clear();
-        for (const [id, total] of next) lastTokens.set(id, total);
-        for (const event of events) onEvent(event);
-
-        if (onSession) {
-          for (const row of rows) {
-            if (!row.id) continue;
-            const session = sessionFromRow(row);
-            const sig = sessionSignature(session);
-            if (lastSessionSignatures.get(row.id) === sig) continue;
-            lastSessionSignatures.set(row.id, sig);
-            onSession(session);
+          for (const file of listRollouts(root)) {
+            if (!tailers.has(file)) {
+              tailers.set(file, new FileTailer(file));
+              trackers.set(file, new RolloutTracker(file));
+            }
           }
-        }
+          for (const [file, tailer] of tailers) {
+            const tracker = trackers.get(file)!;
+            let changed = false;
+            for (const line of tailer.readNewLines()) {
+              const event = tracker.processLine(line);
+              if (event) { onEvent(event); changed = true; }
+            }
+            if (changed) onSession?.(tracker.snapshot());
+          }
+        } catch (error) { console.warn("[codex] failed to read rollouts:", error); }
       };
-
       tick();
       setInterval(tick, 3_000);
     },

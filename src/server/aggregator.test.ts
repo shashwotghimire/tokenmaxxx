@@ -137,3 +137,14 @@ test("computeStreaks handles empty, current, and longest", () => {
   // only today → current 1
   expect(computeStreaks([today])).toEqual({ current: 1, longest: 1 });
 });
+
+test("Codex rollout records replace legacy thread estimates for the same session", () => {
+  const sessionId = "codex-migration-test";
+  handleEvent(ev({ agent: "codex", model: "gpt-5.6-sol", sessionId, inputTokens: 1000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, sourceEventId: `${sessionId}:1000` }));
+  const actual = ev({ agent: "codex", model: "gpt-5.6-sol", sessionId, inputTokens: 100, outputTokens: 20, cacheReadTokens: 880, cacheWriteTokens: 0, sourceEventId: `rollout:${sessionId}:1` });
+  handleEvent(actual);
+  handleEvent(actual);
+  const events = getAllEvents({ sessionId });
+  expect(events).toHaveLength(1);
+  expect([events[0]!.inputTokens, events[0]!.outputTokens, events[0]!.cacheReadTokens]).toEqual([100, 20, 880]);
+});

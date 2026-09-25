@@ -263,3 +263,58 @@ export async function walkDir(handle: FileSystemDirectoryHandle): Promise<File[]
   }
   return out;
 }
+
+/** Parse Codex rollout files, which include actual input/output/cache token counts. */
+export function parseCodexRollout(name: string, text: string): { events: UsageEvent[]; session: SessionInfo } {
+  let id = name.replace(/\.jsonl$/i, "");
+  let cwd: string | null = null;
+  let model = "unknown";
+  const previous = { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0 };
+  const keys = Object.keys(previous) as (keyof typeof previous)[];
+  const events: UsageEvent[] = [];
+  let timeCreated: number | null = null;
+  let timeUpdated: number | null = null;
+  for (const line of text.split("\n")) {
+    let record: any;
+    try { record = JSON.parse(line); } catch { continue; }
+    if (record.type === "session_meta") {
+      if (record.payload?.id) id = String(record.payload.id);
+      if (record.payload?.cwd) cwd = String(record.payload.cwd);
+    }
+    if (record.type === "turn_context" && record.payload?.model) model = String(record.payload.model);
+    if (record.type !== "event_msg" || record.payload?.type !== "token_count") continue;
+    const total = record.payload.info?.total_token_usage;
+    if (!total || keys.some(key => Number(total[key] ?? 0) < previous[key])) {
+      if (total) for (const key of keys) previous[key] = Math.max(0, Number(total[key]) || 0);
+      continue;
+    }
+    const delta = {} as typeof previous;
+    for (const key of keys) {
+      delta[key] = Math.max(0, (Number(total[key]) || 0) - previous[key]);
+      previous[key] = Math.max(0, Number(total[key]) || 0);
+    }
+    if (!keys.some(key => delta[key] > 0)) continue;
+    const timestamp = Date.parse(record.timestamp);
+    if (!Number.isFinite(timestamp)) continue;
+    const cached = Math.min(delta.input_tokens, delta.cached_input_tokens);
+    const normalized = normalizeModel(model);
+    const raw: RawEvent = {
+      agent: "codex", model: normalized.model, rawModel: normalized.rawModel, timestamp,
+      inputTokens: delta.input_tokens - cached, outputTokens: delta.output_tokens,
+      cacheReadTokens: cached, cacheWriteTokens: 0, reasoningTokens: 0,
+      sessionId: id, project: cwd ? projectLabel(cwd) : undefined,
+      sourceEventId: `rollout:${id}:${events.length + 1}`,
+    };
+    events.push({ ...raw, cost: costForEvent(raw) });
+    timeCreated ??= timestamp;
+    timeUpdated = timestamp;
+  }
+  const sum = (key: "inputTokens" | "outputTokens" | "cacheReadTokens" | "cost") => events.reduce((n, e) => n + e[key], 0);
+  const inputTokens = sum("inputTokens"), outputTokens = sum("outputTokens"), cacheReadTokens = sum("cacheReadTokens");
+  return { events, session: {
+    agent: "codex", sessionId: id, title: null, model: normalizeModel(model).model,
+    cwd, gitBranch: null, tokens: inputTokens + outputTokens + cacheReadTokens,
+    cost: sum("cost"), inputTokens, outputTokens, cacheReadTokens,
+    cacheWriteTokens: 0, reasoningTokens: 0, timeCreated, timeUpdated,
+  } };
+}

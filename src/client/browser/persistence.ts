@@ -1,7 +1,7 @@
 export interface StoredHandles {
   claude?: FileSystemDirectoryHandle | null;
   opencode?: FileSystemFileHandle | null;
-  codex?: FileSystemFileHandle | null;
+  codex?: FileSystemDirectoryHandle | null;
 }
 
 const DB_NAME = "tokenmaxxx";

@@ -47,6 +47,12 @@ export function handleEvent(event: UsageEvent): UsageEvent & { cost: number } {
   const priced = costForEvent(event);
   const cost = priced ?? 0;
   const db = getDb();
+  if (event.agent === "codex" && event.sourceEventId?.startsWith("rollout:") && event.sessionId) {
+    // Remove estimates produced by the old SQLite thread-total reader once
+    // an actual rollout for that same session is available.
+    db.query("DELETE FROM usage_events WHERE agent = 'codex' AND session_id = ? AND source_event_id NOT LIKE 'rollout:%'").run(event.sessionId);
+    db.query("DELETE FROM sessions WHERE agent = 'codex' AND session_id = ?").run(event.sessionId);
+  }
   const existing = event.sourceEventId ? db.query("SELECT id FROM usage_events WHERE agent = ? AND source_event_id = ? LIMIT 1").get(event.agent, event.sourceEventId) : db
     .query(
       `SELECT id FROM usage_events
@@ -185,8 +191,8 @@ export function getSessions(opts: QueryOptions & { limit?: number }): SessionInf
     reasoningTokens: r.reasoning_tokens,
     timeCreated: r.time_created,
     timeUpdated: r.time_updated,
-    measurementStatus: r.agent === "codex" ? "partial" : "complete",
-    measurementNote: r.agent === "codex" ? "Codex exposes only a cumulative per-thread total; output and cache categories are unavailable." : null,
+    measurementStatus: r.agent === "codex" && !getDb().query("SELECT 1 FROM usage_events WHERE agent = 'codex' AND session_id = ? AND source_event_id LIKE 'rollout:%' LIMIT 1").get(r.session_id) ? "partial" : "complete",
+    measurementNote: null,
   }));
 }
 

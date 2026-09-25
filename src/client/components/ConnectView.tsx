@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { getEventCount, isBrowserMode, setBrowserData, subscribe, updateBrowserEvents, disconnect } from "../browser/store";
-import { parseClaudeFile, readCodexDb, readOpencodeDb, walkDir } from "../browser/readers";
+import { parseClaudeFile, parseCodexRollout, readOpencodeDb, walkDir } from "../browser/readers";
 import type { SessionInfo, UsageEvent } from "../browser/types";
 import { clearHandles, loadHandles, saveHandles } from "../browser/persistence";
 import type { StoredHandles } from "../browser/persistence";
@@ -94,8 +94,17 @@ function opencodeLoader(src: File | FileSystemFileHandle): Loader {
   return { label: "OpenCode db", load: async () => readOpencodeDb(await toFile(src)) };
 }
 
-function codexLoader(src: File | FileSystemFileHandle): Loader {
-  return { label: "Codex state db", load: async () => readCodexDb(await toFile(src)) };
+function codexLoader(dir: FileSystemDirectoryHandle | File[]): Loader {
+  return { label: "Codex rollouts", load: async () => {
+    const files = Array.isArray(dir) ? dir : await walkDir(dir);
+    const events: UsageEvent[] = [], sessions: SessionInfo[] = [];
+    for (const file of files) {
+      const result = parseCodexRollout(file.name, await file.text());
+      events.push(...result.events);
+      sessions.push(result.session);
+    }
+    return { events, sessions };
+  } };
 }
 
 export function ConnectView() {
@@ -154,7 +163,7 @@ export function ConnectView() {
       const next: Loader[] = [];
       if (h.claude && (await permissionFor(h.claude, request))) next.push(claudeLoader(h.claude));
       if (h.opencode && (await permissionFor(h.opencode, request))) next.push(opencodeLoader(h.opencode));
-      if (h.codex && (await permissionFor(h.codex, request))) next.push(codexLoader(h.codex));
+      if (h.codex?.kind === "directory" && (await permissionFor(h.codex, request))) next.push(codexLoader(h.codex));
       return next;
     },
     [stored]
@@ -206,10 +215,10 @@ export function ConnectView() {
   };
 
   const addCodex = async () => {
-    const file = await pickFile("codex-db");
-    if (!file) return;
-    if (typeof File === "undefined" || !(file instanceof File)) await remember((h) => (h.codex = file as FileSystemFileHandle));
-    await reload([...loaders, codexLoader(file)]);
+    const dir = await pickDir();
+    if (!dir) return;
+    if (!Array.isArray(dir)) await remember((h) => (h.codex = dir));
+    await reload([...loaders, codexLoader(dir)]);
   };
 
   const handleDisconnect = async () => {

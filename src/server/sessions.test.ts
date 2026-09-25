@@ -9,7 +9,6 @@ process.env.TOKENMAXXX_DB_PATH = path.join(dir, "test.db");
 const { handleSession, getSessions } = await import("./aggregator");
 import { SessionTracker, parseLine } from "./sources/claudeCode";
 import { sessionFromRow as opencodeSession, type SessionRow as OpenCodeRow } from "./sources/opencode";
-import { sessionFromRow as codexSession, type ThreadRow } from "./sources/codex";
 import type { SessionInfo } from "./sources/types";
 
 const session = (over: Partial<SessionInfo>): SessionInfo => ({
@@ -118,25 +117,4 @@ test("opencode sessionFromRow maps the session table row", () => {
   expect(s.tokens).toBe(650);
   expect(s.cost).toBe(1.25);
   expect(s.reasoningTokens).toBe(10);
-});
-
-test("codex sessionFromRow attributes totals as input", () => {
-  const row: ThreadRow = {
-    id: "t1",
-    model: "gpt-5.5",
-    tokens_used: 4000,
-    updated_at_ms: 2000,
-    created_at_ms: 1000,
-    title: "Do the thing",
-    cwd: "/proj",
-  };
-  const s = codexSession(row);
-  expect(s.agent).toBe("codex");
-  expect(s.title).toBe("Do the thing");
-  expect(s.cwd).toBe("/proj");
-  expect(s.tokens).toBe(4000);
-  expect(s.inputTokens).toBe(4000);
-  expect(s.outputTokens).toBe(0);
-  expect(s.timeCreated).toBe(1000);
-  expect(s.timeUpdated).toBe(2000);
 });

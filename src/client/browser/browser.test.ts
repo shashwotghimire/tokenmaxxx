@@ -175,3 +175,15 @@ describe("browser api routing", () => {
     expect(maybeBrowserApi("/api/summary")).toBeNull();
   });
 });
+
+test("Codex rollout parsing keeps output and cache read tokens", async () => {
+  const { parseCodexRollout } = await import("./readers");
+  const text = [
+    { type: "session_meta", payload: { id: "browser-codex" } },
+    { type: "turn_context", payload: { model: "gpt-5.6-sol" } },
+    { type: "event_msg", payload: { type: "token_count", info: { total_token_usage: { input_tokens: 100, cached_input_tokens: 80, output_tokens: 12 } } } },
+  ].map(x => JSON.stringify({ ...x, timestamp: "2026-09-25T12:00:00Z" })).join("\n");
+  const result = parseCodexRollout("rollout.jsonl", text);
+  expect([result.events[0]?.inputTokens, result.events[0]?.cacheReadTokens, result.events[0]?.outputTokens]).toEqual([20, 80, 12]);
+  expect(result.session.tokens).toBe(112);
+});

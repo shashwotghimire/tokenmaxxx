@@ -57,13 +57,13 @@ users can just run the bash version.)
 Mount your agent logs read-only at their container paths (`/root/.claude`,
 `/root/.local/share/opencode/opencode.db`, `/root/.codex`) or point the sources
 at them with `TOKENMAXXX_CLAUDE_PATH`, `TOKENMAXXX_OPENCODE_DB`,
-`TOKENMAXXX_CODEX_DB`. The SQLite database persists in `/data`.
+`TOKENMAXXX_CODEX_STATE_DIR`. The SQLite database persists in `/data`.
 
 ## Browser mode (no server data)
 
 When the dashboard is running without server-side data, click **Connect logs**
 and select your own agent logs:
-Claude Code's `~/.claude/projects` folder, `opencode.db`, or `state_*.sqlite`.
+Claude Code's `~/.claude/projects` folder, `opencode.db`, or `sessions/**/*.jsonl`.
 Everything is parsed **in the browser** with `sql.js` — nothing is uploaded.
 Note this only works in browsers with the File System Access API or file
 picker support, and the one-click permission is per session.
@@ -144,7 +144,7 @@ and have no guaranteed background delivery.
 | ----------- | -------------------------------------------------------- | ---------------------------- |
 | Claude Code | `~/.claude/projects/**/*.jsonl`                          | `TOKENMAXXX_CLAUDE_PATH`     |
 | OpenCode    | `~/.local/share/opencode/opencode.db` (SQLite)           | `TOKENMAXXX_OPENCODE_DB`     |
-| Codex CLI   | `~/.codex/state_*.sqlite` (SQLite, `threads` table)      | `TOKENMAXXX_CODEX_DB`        |
+| Codex CLI   | `~/.codex/sessions/**/*.jsonl` (rollout token counts) | `TOKENMAXXX_CODEX_STATE_DIR` |
 
 Any source whose files are missing is skipped with a warning naming the
 expected path; the others keep working. The app also runs with **zero**

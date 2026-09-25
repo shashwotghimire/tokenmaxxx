@@ -22,17 +22,17 @@ export function defaultPaths(os: OS): DefaultPaths {
       return {
         claude: `%USERPROFILE%\\.claude\\projects`,
         opencode: `%USERPROFILE%\\.local\\share\\opencode\\opencode.db`,
-        codex: `%USERPROFILE%\\.codex\\state_*.sqlite`,
+        codex: `%USERPROFILE%\\.codex\\sessions`,
       };
     case "macOS":
     case "Linux":
       return {
         claude: `~/.claude/projects`,
         opencode: `~/.local/share/opencode/opencode.db`,
-        codex: `~/.codex/state_*.sqlite`,
+        codex: `~/.codex/sessions`,
       };
     default:
-      return { claude: "~/.claude/projects", opencode: "~/.local/share/opencode/opencode.db", codex: "~/.codex/state_*.sqlite" };
+      return { claude: "~/.claude/projects", opencode: "~/.local/share/opencode/opencode.db", codex: "~/.codex/sessions" };
   }
 }
 
