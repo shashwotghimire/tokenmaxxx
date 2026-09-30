@@ -144,7 +144,7 @@ and have no guaranteed background delivery.
 | ----------- | -------------------------------------------------------- | ---------------------------- |
 | Claude Code | `~/.claude/projects/**/*.jsonl`                          | `TOKENMAXXX_CLAUDE_PATH`     |
 | OpenCode    | `~/.local/share/opencode/opencode.db` (SQLite)           | `TOKENMAXXX_OPENCODE_DB`     |
-| Codex CLI   | `~/.codex/sessions/**/*.jsonl` (rollout token counts) | `TOKENMAXXX_CODEX_STATE_DIR` |
+| Codex CLI   | `~/.codex/sessions/**/*.jsonl` and `~/.codex/archived_sessions/*.jsonl` (rollout token counts) | `TOKENMAXXX_CODEX_STATE_DIR`, then `CODEX_HOME` |
 
 Any source whose files are missing is skipped with a warning naming the
 expected path; the others keep working. The app also runs with **zero**
