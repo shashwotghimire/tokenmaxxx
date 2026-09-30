@@ -7,11 +7,15 @@ import { costForEvent } from "../pricing";
 import { normalizeModel } from "../../shared/models";
 import { projectLabel } from "../../shared/privacy";
 
-const stateDir = () => process.env.TOKENMAXXX_CODEX_STATE_DIR || path.join(homedir(), ".codex");
+export const codexStateDir = () =>
+  process.env.TOKENMAXXX_CODEX_STATE_DIR || process.env.CODEX_HOME || path.join(homedir(), ".codex");
 
-function listRollouts(dir: string, out: string[] = []): string[] {
-  if (!existsSync(dir)) return out;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+export const rolloutRoots = (dir = codexStateDir()) => [path.join(dir, "sessions"), path.join(dir, "archived_sessions")];
+
+export function listRollouts(dir: string, out: string[] = []): string[] {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) listRollouts(full, out);
     else if (entry.isFile() && entry.name.endsWith(".jsonl")) out.push(full);
@@ -109,31 +113,35 @@ export function createCodexSource(): UsageSource {
   return {
     id: AGENTS.CODEX,
     watch(onEvent, onSession) {
-      const root = path.join(stateDir(), "sessions");
-      if (!existsSync(root)) {
-        console.warn(`[codex] rollout directory not found: ${root}`);
-        return;
+      const roots = rolloutRoots();
+      if (!roots.some(existsSync)) {
+        console.warn(`[codex] rollout directory not found: ${roots[0]}. Waiting for it to appear; set CODEX_HOME or TOKENMAXXX_CODEX_STATE_DIR to point elsewhere.`);
       }
       const tailers = new Map<string, FileTailer>();
       const trackers = new Map<string, RolloutTracker>();
+      const failing = new Set<string>();
       const tick = () => {
-        try {
-          for (const file of listRollouts(root)) {
-            if (!tailers.has(file)) {
-              tailers.set(file, new FileTailer(file));
-              trackers.set(file, new RolloutTracker(file));
-            }
+        for (const file of roots.flatMap(root => listRollouts(root))) {
+          if (!tailers.has(file)) {
+            tailers.set(file, new FileTailer(file));
+            trackers.set(file, new RolloutTracker(file));
           }
-          for (const [file, tailer] of tailers) {
-            const tracker = trackers.get(file)!;
-            let changed = false;
+        }
+        for (const [file, tailer] of tailers) {
+          const tracker = trackers.get(file)!;
+          let changed = false;
+          try {
             for (const line of tailer.readNewLines()) {
               const event = tracker.processLine(line);
               if (event) { onEvent(event); changed = true; }
             }
-            if (changed) onSession?.(tracker.snapshot());
+            failing.delete(file);
+          } catch (error) {
+            if (!failing.has(file)) console.warn(`[codex] failed to read ${file}:`, error);
+            failing.add(file);
           }
-        } catch (error) { console.warn("[codex] failed to read rollouts:", error); }
+          if (changed) onSession?.(tracker.snapshot());
+        }
       };
       tick();
       setInterval(tick, 3_000);

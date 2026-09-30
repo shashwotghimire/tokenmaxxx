@@ -1,4 +1,7 @@
 import { openSync, readSync, closeSync, statSync, existsSync } from "node:fs";
+import { StringDecoder } from "node:string_decoder";
+
+const CHUNK_BYTES = 8 * 1024 * 1024;
 
 /**
  * Reads a growing log file line-by-line, tracking a byte offset so we only
@@ -8,6 +11,7 @@ import { openSync, readSync, closeSync, statSync, existsSync } from "node:fs";
 export class FileTailer {
   private position = 0;
   private buffer = "";
+  private decoder = new StringDecoder("utf8");
 
   constructor(private readonly filePath: string) {}
 
@@ -19,22 +23,27 @@ export class FileTailer {
       // File was truncated or replaced: restart from the beginning.
       this.position = 0;
       this.buffer = "";
+      this.decoder = new StringDecoder("utf8");
     }
     if (size === this.position) return [];
 
-    const length = size - this.position;
+    const lines: string[] = [];
     const fd = openSync(this.filePath, "r");
-    const buf = Buffer.alloc(length);
     try {
-      readSync(fd, buf, 0, length, this.position);
+      while (this.position < size) {
+        const length = Math.min(CHUNK_BYTES, size - this.position);
+        const buf = Buffer.alloc(length);
+        const read = readSync(fd, buf, 0, length, this.position);
+        if (read <= 0) break;
+        this.position += read;
+        this.buffer += this.decoder.write(buf.subarray(0, read));
+        const chunkLines = this.buffer.split("\n");
+        this.buffer = chunkLines.pop() ?? "";
+        for (const line of chunkLines) lines.push(line);
+      }
     } finally {
       closeSync(fd);
     }
-    this.position = size;
-
-    this.buffer += buf.toString("utf8");
-    const lines = this.buffer.split("\n");
-    this.buffer = lines.pop() ?? "";
     return lines;
   }
 
