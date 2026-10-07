@@ -78,5 +78,9 @@ function migrate(db: Database) {
   add("project", "project TEXT");
   add("measurement_status", "measurement_status TEXT NOT NULL DEFAULT 'complete'");
   add("cost_status", "cost_status TEXT NOT NULL DEFAULT 'unknown'");
+  // Codex usage comes only from rollouts. Older builds stored state_*.sqlite
+  // thread totals as input-only estimates, which inflate input and cost.
+  db.exec("DELETE FROM usage_events WHERE agent = 'codex' AND (source_event_id IS NULL OR source_event_id NOT LIKE 'rollout:%')");
+  db.exec("DELETE FROM sessions WHERE agent = 'codex' AND session_id NOT IN (SELECT session_id FROM usage_events WHERE agent = 'codex' AND session_id IS NOT NULL)");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_source_event ON usage_events(agent, source_event_id) WHERE source_event_id IS NOT NULL");
 }

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { FileTailer } from "./tailer";
@@ -12,15 +12,41 @@ export const codexStateDir = () =>
 
 export const rolloutRoots = (dir = codexStateDir()) => [path.join(dir, "sessions"), path.join(dir, "archived_sessions")];
 
+const COMPRESSED_SUFFIX = ".zst";
+const isRollout = (name: string) => name.endsWith(".jsonl") || name.endsWith(`.jsonl${COMPRESSED_SUFFIX}`);
+
+/** Lists plain `.jsonl` and Codex-compressed `.jsonl.zst` rollouts, preferring
+ * the plain file when both representations exist. */
 export function listRollouts(dir: string, out: string[] = []): string[] {
   let entries;
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  const files = new Set(entries.filter(e => e.isFile()).map(e => e.name));
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) listRollouts(full, out);
-    else if (entry.isFile() && entry.name.endsWith(".jsonl")) out.push(full);
+    else if (entry.isFile() && isRollout(entry.name)) {
+      if (entry.name.endsWith(COMPRESSED_SUFFIX) && files.has(entry.name.slice(0, -COMPRESSED_SUFFIX.length))) continue;
+      out.push(full);
+    }
   }
   return out;
+}
+
+/** Reads a compressed rollout in full whenever it changes. Codex only
+ * compresses cold rollouts and decompresses them before appending again. */
+class CompressedRolloutReader {
+  private version = "";
+  constructor(private readonly filePath: string) {}
+
+  /** Returns every line if the file changed since the last call, else null. */
+  readIfChanged(): string[] | null {
+    const stat = statSync(this.filePath);
+    const version = `${stat.size}:${stat.mtimeMs}`;
+    if (version === this.version) return null;
+    const text = new TextDecoder().decode(Bun.zstdDecompressSync(readFileSync(this.filePath)));
+    this.version = version;
+    return text.split("\n");
+  }
 }
 
 type Usage = { input_tokens?: number; cached_input_tokens?: number; output_tokens?: number; reasoning_output_tokens?: number };
@@ -40,7 +66,7 @@ export class RolloutTracker {
   private latest: number | null = null;
 
   constructor(private readonly file: string) {
-    this.sessionId = path.basename(file, ".jsonl");
+    this.sessionId = path.basename(file).replace(/\.jsonl(\.zst)?$/, "");
   }
 
   processLine(line: string): UsageEvent | null {
@@ -118,20 +144,39 @@ export function createCodexSource(): UsageSource {
         console.warn(`[codex] rollout directory not found: ${roots[0]}. Waiting for it to appear; set CODEX_HOME or TOKENMAXXX_CODEX_STATE_DIR to point elsewhere.`);
       }
       const tailers = new Map<string, FileTailer>();
+      const compressed = new Map<string, CompressedRolloutReader>();
       const trackers = new Map<string, RolloutTracker>();
       const failing = new Set<string>();
       const tick = () => {
-        for (const file of roots.flatMap(root => listRollouts(root))) {
-          if (!tailers.has(file)) {
-            tailers.set(file, new FileTailer(file));
-            trackers.set(file, new RolloutTracker(file));
-          }
+        const files = new Set(roots.flatMap(root => listRollouts(root)));
+        for (const file of [...trackers.keys()]) {
+          if (files.has(file)) continue;
+          tailers.delete(file);
+          compressed.delete(file);
+          trackers.delete(file);
         }
-        for (const [file, tailer] of tailers) {
-          const tracker = trackers.get(file)!;
+        for (const file of files) {
+          if (trackers.has(file)) continue;
+          if (file.endsWith(COMPRESSED_SUFFIX)) compressed.set(file, new CompressedRolloutReader(file));
+          else tailers.set(file, new FileTailer(file));
+          trackers.set(file, new RolloutTracker(file));
+        }
+        for (const file of files) {
           let changed = false;
           try {
-            for (const line of tailer.readNewLines()) {
+            const reader = compressed.get(file);
+            let lines: string[];
+            if (reader) {
+              const all = reader.readIfChanged();
+              if (!all) continue;
+              // Re-parse from the start; stable event ids dedupe stored events.
+              trackers.set(file, new RolloutTracker(file));
+              lines = all;
+            } else {
+              lines = tailers.get(file)!.readNewLines();
+            }
+            const tracker = trackers.get(file)!;
+            for (const line of lines) {
               const event = tracker.processLine(line);
               if (event) { onEvent(event); changed = true; }
             }
@@ -140,7 +185,7 @@ export function createCodexSource(): UsageSource {
             if (!failing.has(file)) console.warn(`[codex] failed to read ${file}:`, error);
             failing.add(file);
           }
-          if (changed) onSession?.(tracker.snapshot());
+          if (changed) onSession?.(trackers.get(file)!.snapshot());
         }
       };
       tick();
