@@ -49,3 +49,12 @@ test("lists active and archived rollouts, tolerating missing roots", () => {
   expect(files).toEqual(["rollout-a.jsonl", "rollout-b.jsonl"]);
   expect(listRollouts(path.join(home, "missing"))).toEqual([]);
 });
+
+test("lists compressed rollouts unless the plain rollout is still present", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "codex-zst-"));
+  writeFileSync(path.join(dir, "rollout-a.jsonl"), "");
+  writeFileSync(path.join(dir, "rollout-a.jsonl.zst"), "");
+  writeFileSync(path.join(dir, "rollout-b.jsonl.zst"), "");
+  expect(listRollouts(dir).map(f => path.basename(f)).sort()).toEqual(["rollout-a.jsonl", "rollout-b.jsonl.zst"]);
+  expect(new RolloutTracker(path.join(dir, "rollout-b.jsonl.zst")).snapshot().sessionId).toBe("rollout-b");
+});
