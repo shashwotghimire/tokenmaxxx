@@ -51,6 +51,10 @@ export function handleEvent(event: UsageEvent): UsageEvent & { cost: number } {
     // Remove estimates produced by the old SQLite thread-total reader once
     // an actual rollout for that same session is available.
     db.query("DELETE FROM usage_events WHERE agent = 'codex' AND session_id = ? AND source_event_id NOT LIKE 'rollout:%'").run(event.sessionId);
+    if (event.sourceEventId.startsWith("rollout:v2:")) {
+      // Re-backfill disjoint token buckets rather than retaining older parser results.
+      db.query("DELETE FROM usage_events WHERE agent = 'codex' AND session_id = ? AND source_event_id NOT LIKE 'rollout:v2:%'").run(event.sessionId);
+    }
     db.query("DELETE FROM sessions WHERE agent = 'codex' AND session_id = ?").run(event.sessionId);
   }
   const existing = event.sourceEventId ? db.query("SELECT id FROM usage_events WHERE agent = ? AND source_event_id = ? LIMIT 1").get(event.agent, event.sourceEventId) : db

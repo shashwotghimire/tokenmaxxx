@@ -33,7 +33,7 @@ export function costForEvent(event: UsageEvent): number | null {
   const perMillion = 1_000_000;
   return (
     (event.inputTokens * p.input +
-      event.outputTokens * p.output +
+      (event.outputTokens + event.reasoningTokens) * p.output +
       event.cacheWriteTokens * p.cacheWrite +
       event.cacheReadTokens * p.cacheRead) /
     perMillion
