@@ -16,7 +16,7 @@ test("splits Codex usage without double counting", () => {
     } },
   });
   const first = tracker.processLine(record(100, 70, 20))!;
-  expect([first.inputTokens, first.cacheReadTokens, first.outputTokens, first.reasoningTokens]).toEqual([30, 70, 20, 0]);
+  expect([first.inputTokens, first.cacheReadTokens, first.outputTokens, first.reasoningTokens]).toEqual([30, 70, 18, 2]);
   expect(first.model).toBe("gpt-5.6-sol");
   expect(tracker.processLine(record(100, 70, 20))).toBeNull();
   const second = tracker.processLine(record(140, 90, 25))!;
@@ -48,4 +48,34 @@ test("lists active and archived rollouts, tolerating missing roots", () => {
   const files = rolloutRoots(home).flatMap(root => listRollouts(root)).map(f => path.basename(f)).sort();
   expect(files).toEqual(["rollout-a.jsonl", "rollout-b.jsonl"]);
   expect(listRollouts(path.join(home, "missing"))).toEqual([]);
+});
+
+// Compare both import paths on the same rollout, including repeats and a counter reset.
+test("server and browser agree on reasoning, last-only usage and counter resets", async () => {
+  const { parseCodexRollout } = await import("../../client/browser/readers");
+  const records = [
+    line("session_meta", { id: "parity" }),
+    line("turn_context", { model: "gpt-5.5" }),
+    line("event_msg", { type: "token_count", info: { last_token_usage: { input_tokens: 100, cached_input_tokens: 80, output_tokens: 20, reasoning_output_tokens: 12 } } }),
+    ...Array(2).fill(line("event_msg", { type: "token_count", info: { total_token_usage: { input_tokens: 150, cached_input_tokens: 100, output_tokens: 30, reasoning_output_tokens: 15 } } })),
+    line("turn_context", { model: "gpt-5.4" }),
+    line("event_msg", { type: "token_count", info: { total_token_usage: { input_tokens: 40, cached_input_tokens: 10, output_tokens: 5, reasoning_output_tokens: 2 }, last_token_usage: { input_tokens: 40, cached_input_tokens: 10, output_tokens: 5, reasoning_output_tokens: 2 } } }),
+  ];
+  const tracker = new RolloutTracker("parity.jsonl");
+  const events = records.map(record => tracker.processLine(record)).filter(Boolean);
+  const browser = parseCodexRollout("parity.jsonl", records.join("\n"));
+  expect(events).toHaveLength(3);
+  expect(browser.events.map(({ cost, ...event }) => event)).toEqual(events);
+  expect(browser.session).toEqual(tracker.snapshot());
+  expect(browser.session.tokens).toBe(225);
+  expect(browser.session.reasoningTokens).toBe(17);
+  expect(browser.session.outputTokens).toBe(18);
+  expect(browser.events[2]!.model).toBe("gpt-5.4");
+});
+
+test("invalid timestamps do not consume the cumulative baseline", () => {
+  const tracker = new RolloutTracker("invalid.jsonl");
+  const record = line("event_msg", { type: "token_count", info: { total_token_usage: { input_tokens: 100, output_tokens: 20 } } });
+  expect(tracker.processLine(record.replace("2026-09-25T12:00:00Z", "invalid"))).toBeNull();
+  expect(tracker.processLine(record)?.inputTokens).toBe(100);
 });

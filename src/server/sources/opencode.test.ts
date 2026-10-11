@@ -59,3 +59,14 @@ test("defaults missing token buckets to 0", () => {
   expect(e!.outputTokens).toBe(0);
   expect(e!.reasoningTokens).toBe(0);
 });
+
+
+test("GPT usage without optional total is imported in both runtimes", async () => {
+  const { parseMessageData: browserParse } = await import("../../client/browser/readers");
+  const raw = JSON.stringify({ ...valid, modelID: "gpt-5.5", tokens: { input: 10, output: 5, reasoning: 3, cache: { read: 20 } } });
+  for (const parse of [parseMessageData, browserParse]) {
+    const event = parse(raw)!;
+    expect(event).not.toBeNull();
+    expect([event.inputTokens, event.outputTokens, event.reasoningTokens, event.cacheReadTokens]).toEqual([10, 5, 3, 20]);
+  }
+});

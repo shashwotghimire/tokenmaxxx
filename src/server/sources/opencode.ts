@@ -51,7 +51,8 @@ export function parseMessageData(raw: string): UsageEvent | null {
   if (data.role !== "assistant") return null;
   const tokens = data.tokens;
   if (!tokens) return null;
-  const total = tokens.total ?? 0;
+  const total = tokens.total ?? ((tokens.input ?? 0) + (tokens.output ?? 0) +
+    (tokens.reasoning ?? 0) + (tokens.cache?.read ?? 0) + (tokens.cache?.write ?? 0));
   if (total <= 0) return null;
   const ts = data.time?.created;
   if (typeof ts !== "number" || Number.isNaN(ts)) return null;

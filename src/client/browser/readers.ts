@@ -1,6 +1,7 @@
 import initSqlJs from "sql.js";
 import { costForEvent } from "./pricing";
 import type { AgentId, SessionInfo, UsageEvent } from "./types";
+import { CodexUsageTracker } from "../../shared/codexUsage";
 import { normalizeModel } from "../../shared/models";
 import { projectLabel, sanitizeTitle } from "../../shared/privacy";
 
@@ -112,7 +113,8 @@ export function parseMessageData(raw: string): RawEvent | null {
   if (data.role !== "assistant") return null;
   const tokens = data.tokens;
   if (!tokens) return null;
-  const total = tokens.total ?? 0;
+  const total = tokens.total ?? ((tokens.input ?? 0) + (tokens.output ?? 0) +
+    (tokens.reasoning ?? 0) + (tokens.cache?.read ?? 0) + (tokens.cache?.write ?? 0));
   if (total <= 0) return null;
   const ts = data.time?.created;
   if (typeof ts !== "number" || Number.isNaN(ts)) return null;
@@ -269,8 +271,7 @@ export function parseCodexRollout(name: string, text: string): { events: UsageEv
   let id = name.replace(/\.jsonl$/i, "");
   let cwd: string | null = null;
   let model = "unknown";
-  const previous = { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0 };
-  const keys = Object.keys(previous) as (keyof typeof previous)[];
+  const tracker = new CodexUsageTracker();
   const events: UsageEvent[] = [];
   let timeCreated: number | null = null;
   let timeUpdated: number | null = null;
@@ -283,38 +284,27 @@ export function parseCodexRollout(name: string, text: string): { events: UsageEv
     }
     if (record.type === "turn_context" && record.payload?.model) model = String(record.payload.model);
     if (record.type !== "event_msg" || record.payload?.type !== "token_count") continue;
-    const total = record.payload.info?.total_token_usage;
-    if (!total || keys.some(key => Number(total[key] ?? 0) < previous[key])) {
-      if (total) for (const key of keys) previous[key] = Math.max(0, Number(total[key]) || 0);
-      continue;
-    }
-    const delta = {} as typeof previous;
-    for (const key of keys) {
-      delta[key] = Math.max(0, (Number(total[key]) || 0) - previous[key]);
-      previous[key] = Math.max(0, Number(total[key]) || 0);
-    }
-    if (!keys.some(key => delta[key] > 0)) continue;
     const timestamp = Date.parse(record.timestamp);
     if (!Number.isFinite(timestamp)) continue;
-    const cached = Math.min(delta.input_tokens, delta.cached_input_tokens);
+    const usage = tracker.read(record.payload.info);
+    if (!usage) continue;
     const normalized = normalizeModel(model);
     const raw: RawEvent = {
       agent: "codex", model: normalized.model, rawModel: normalized.rawModel, timestamp,
-      inputTokens: delta.input_tokens - cached, outputTokens: delta.output_tokens,
-      cacheReadTokens: cached, cacheWriteTokens: 0, reasoningTokens: 0,
+      ...usage,
       sessionId: id, project: cwd ? projectLabel(cwd) : undefined,
-      sourceEventId: `rollout:${id}:${events.length + 1}`,
+      sourceEventId: `rollout:v2:${id}:${events.length + 1}`,
     };
     events.push({ ...raw, cost: costForEvent(raw) });
     timeCreated ??= timestamp;
     timeUpdated = timestamp;
   }
-  const sum = (key: "inputTokens" | "outputTokens" | "cacheReadTokens" | "cost") => events.reduce((n, e) => n + e[key], 0);
-  const inputTokens = sum("inputTokens"), outputTokens = sum("outputTokens"), cacheReadTokens = sum("cacheReadTokens");
+  const sum = (key: "inputTokens" | "outputTokens" | "cacheReadTokens" | "reasoningTokens" | "cost") => events.reduce((n, e) => n + e[key], 0);
+  const inputTokens = sum("inputTokens"), outputTokens = sum("outputTokens"), cacheReadTokens = sum("cacheReadTokens"), reasoningTokens = sum("reasoningTokens");
   return { events, session: {
     agent: "codex", sessionId: id, title: null, model: normalizeModel(model).model,
-    cwd, gitBranch: null, tokens: inputTokens + outputTokens + cacheReadTokens,
+    cwd, gitBranch: null, tokens: inputTokens + outputTokens + cacheReadTokens + reasoningTokens,
     cost: sum("cost"), inputTokens, outputTokens, cacheReadTokens,
-    cacheWriteTokens: 0, reasoningTokens: 0, timeCreated, timeUpdated,
+    cacheWriteTokens: 0, reasoningTokens, timeCreated, timeUpdated,
   } };
 }

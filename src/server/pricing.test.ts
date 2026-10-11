@@ -35,3 +35,12 @@ test("does not invent a rate for unknown models", () => {
 test("zero usage has zero cost", () => {
   expect(costForEvent(base({}))).toBe(0);
 });
+
+
+test("reasoning is priced as output in both runtimes", async () => {
+  const { costForEvent: browserCost } = await import("../client/browser/pricing");
+  const event = base({ model: "gpt-5.5", inputTokens: 100, outputTokens: 8, reasoningTokens: 12, cacheReadTokens: 80 });
+  const expected = (100 * 1.25 + 20 * 10 + 80 * 0.125) / 1_000_000;
+  expect(costForEvent(event)).toBeCloseTo(expected, 10);
+  expect(browserCost(event)).toBeCloseTo(expected, 10);
+});

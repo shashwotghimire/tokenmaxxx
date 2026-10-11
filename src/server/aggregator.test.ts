@@ -148,3 +148,16 @@ test("Codex rollout records replace legacy thread estimates for the same session
   expect(events).toHaveLength(1);
   expect([events[0]!.inputTokens, events[0]!.outputTokens, events[0]!.cacheReadTokens]).toEqual([100, 20, 880]);
 });
+
+
+test("re-backfill replaces old Codex buckets and remains idempotent", () => {
+  const sessionId = "codex-buckets-migration";
+  handleEvent(ev({ agent: "codex", model: "gpt-5.5", sessionId, inputTokens: 30, outputTokens: 20, cacheReadTokens: 70, sourceEventId: `rollout:${sessionId}:1` }));
+  const corrected = ev({ agent: "codex", model: "gpt-5.5", sessionId, inputTokens: 30, outputTokens: 8, reasoningTokens: 12, cacheReadTokens: 70, sourceEventId: `rollout:v2:${sessionId}:1` });
+  handleEvent(corrected);
+  handleEvent(corrected);
+  const events = getAllEvents({ sessionId });
+  expect(events).toHaveLength(1);
+  expect(events[0]!.outputTokens).toBe(8);
+  expect(events[0]!.reasoningTokens).toBe(12);
+});
